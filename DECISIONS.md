@@ -15,6 +15,8 @@ Durable decisions about how this app is built, in roughly chronological order. A
 - The current week is pinned at the top of the main column; upcoming weeks scroll below it.
 - "Current week" is whichever week (by ascending week number) has an unfinished run in it — not based on today's date, so it stays correct even if the user falls behind or works ahead.
 - Specific dates show next to each run's checkbox.
+- **Run row layout (2026-10-21, user's spec):** the label reads "<planned> mi <style>" (e.g. "12 mi Quality") and the separate "x mi plan" text is gone; the actual-miles box sits right beside the shoe dropdown; completed runs are faded but **not crossed out**. Edit mode keeps its planned-miles box (that's where the plan is changed).
+- **All notes cleared (2026-10-21, user's request).** All 77 notes were exact copies of the Sheet's descriptions (none typed in the app), so nothing unique was lost — the Sheet still has them. The legacy `desc` field was deleted from every run at the same time, since the desc→notes migration would otherwise have refilled the notes on the next load.
 - Runs inside a week are listed in date order (then a fixed tiebreak), and the "week ending" date is the week's latest run date (2026-10-21; previously runs came out in database-ID order and the end date could be wrong).
 - **No past-due flag** (2026-10-21) — the user doesn't want one; removed entirely.
 - Checking a run's checkbox auto-fills its actual miles with the planned miles (still editable). Unchecking it clears that auto-filled value back out, and — since it's the same `updateRow` path as any other actual-miles edit — correctly reverses whatever shoe mileage had been added.

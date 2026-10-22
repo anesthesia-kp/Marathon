@@ -80,7 +80,8 @@ const weekCard = (page, week) =>
   page.locator(".week-card", { has: page.locator(".week-title", { hasText: new RegExp(`^Week ${week}(?!\\d)`) }) });
 
 const runRow = (page, week, session) =>
-  weekCard(page, week).locator(".run-row", { has: page.locator(".run-session", { hasText: new RegExp(`^${session}$`) }) });
+  // A run's label reads "<planned> mi <style>", e.g. "7 mi Quality".
+  weekCard(page, week).locator(".run-row", { has: page.locator(".run-session", { hasText: new RegExp(`^[\\d.]+ mi ${session}$`) }) });
 
 const tile = (page, label) =>
   page.locator(".stat-tile", { has: page.locator(".stat-label", { hasText: label }) }).locator(".stat-value");
@@ -139,7 +140,7 @@ test("runs inside a week are in date order, and 'week ending' is the latest date
   await start(page);
   const current = page.locator(".week-card.current-week");
   await expect(current.locator(".week-title")).toContainText("Week 22");
-  await expect(current.locator(".run-session")).toHaveText(["Quality", "Easy", "Long"]);
+  await expect(current.locator(".run-session")).toHaveText(["7 mi Quality", "11 mi Easy", "20 mi Long"]);
   await expect(current.locator(".week-sub")).toContainText("week ending Oct 25");
 
   // Move week 23's long run to the start of the week; order and end date follow.
@@ -148,8 +149,43 @@ test("runs inside a week are in date order, and 'week ending' is the latest date
   await longDate.fill("2026-10-26"); // fill() fires the change event, which saves
   await expect.poll(async () => (await dbRun(page, 23, "Long")).date).toBe("2026-10-26");
   await page.getByRole("button", { name: "Done editing" }).click();
-  await expect(weekCard(page, 23).locator(".run-session")).toHaveText(["Long", "Quality", "Easy"]);
+  await expect(weekCard(page, 23).locator(".run-session")).toHaveText(["13 mi Long", "6 mi Quality", "8 mi Easy"]);
   await expect(weekCard(page, 23).locator(".week-sub")).toContainText("week ending Oct 29");
+});
+
+test("run rows: '<miles> mi <style>', no separate plan text, actual box beside the shoe, not crossed out", async ({ page }) => {
+  await start(page);
+  const current = page.locator(".week-card.current-week");
+  await expect(current.locator(".run-session").first()).toHaveText("7 mi Quality");
+  // No separate "x mi plan" text anywhere on the schedule (outside edit mode).
+  await expect(page.locator("#tab-schedule .run-row", { hasText: /plan/i })).toHaveCount(0);
+
+  // The actual-miles box sits immediately to the right of the shoe dropdown, on the same line.
+  const expectBesideShoe = async (row) => {
+    const shoe = await row.locator(".shoe-select").boundingBox();
+    const actual = await row.locator(".actual-input").boundingBox();
+    expect(actual.x, "actual box is right of the shoe").toBeGreaterThanOrEqual(shoe.x + shoe.width);
+    expect(actual.x - (shoe.x + shoe.width), "actual box is right next to the shoe").toBeLessThan(20);
+    expect(Math.abs(actual.y + actual.height / 2 - (shoe.y + shoe.height / 2)), "same line").toBeLessThan(6);
+  };
+  await expectBesideShoe(runRow(page, 22, "Quality"));
+  await page.locator(".wrc-head").first().click(); // expand the most recent completed week
+  await expectBesideShoe(page.locator(".wrc-body .run-row").first());
+
+  // Completed runs are not crossed out.
+  const decoration = (loc) => loc.evaluate((el) => getComputedStyle(el).textDecorationLine);
+  expect(await decoration(page.locator(".wrc-body .run-row.done .run-session").first())).toBe("none");
+  await runRow(page, 22, "Quality").locator(".done-toggle").check();
+  await expect(runRow(page, 22, "Quality").locator(".done-toggle")).toBeChecked();
+  expect(await decoration(runRow(page, 22, "Quality").locator(".run-session"))).toBe("none");
+
+  // With no shoes at all, the actual box is still there.
+  await gotoTab(page, "Shoes");
+  for (let i = 0; i < 3; i++) await page.locator(".shoe-card .delete-run-btn").first().click(), await expect(page.locator(".shoe-card")).toHaveCount(2 - i);
+  await gotoTab(page, "Schedule");
+  await expect(runRow(page, 22, "Easy").locator(".shoe-select")).toHaveCount(0);
+  await setActual(runRow(page, 22, "Easy"), 11);
+  await expect.poll(async () => (await dbRun(page, 22, "Easy")).actual).toBe(11);
 });
 
 test("mile totals show at most one decimal", async ({ page }) => {

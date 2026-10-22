@@ -344,10 +344,9 @@
   .meter-track.small { height: 6px; margin-top: 6px; }
   .wrc-body { margin-top: 8px; }
   .wrc-body .run-row:first-of-type { border-top: 1px solid var(--gridline); }
-  /* The sidebar is only ~300px wide -- the 4-column run-row grid used for
-     the current/upcoming weeks is too cramped there and overlaps, so
-     expanded completed runs stack instead: checkbox+date on one line,
-     then the info block, then plan/actual below it. */
+  /* The sidebar is only ~300px wide -- too narrow for the checkbox column
+     beside the run details, so expanded completed runs stack instead:
+     checkbox+date on one line, then the run details below. */
   .wrc-body .run-row {
     display: flex;
     flex-wrap: wrap;
@@ -356,13 +355,11 @@
   }
   .wrc-body .run-check { flex-direction: row; align-items: center; order: 1; }
   .wrc-body .run-info { order: 2; flex: 1 1 100%; }
-  .wrc-body .run-plan { order: 3; text-align: left; }
-  .wrc-body .run-actual { order: 4; }
-  .wrc-body .run-shoe select, .wrc-body .run-notes-input { max-width: 100%; }
+  .wrc-body .run-notes-input { max-width: 100%; }
 
   .run-row {
     display: grid;
-    grid-template-columns: 46px 1fr auto auto;
+    grid-template-columns: 46px 1fr;
     align-items: center;
     gap: 8px;
     padding: 6px 0;
@@ -387,8 +384,14 @@
   }
   .run-info { min-width: 0; }
   .run-session { font-size: 14px; font-weight: 600; }
-  .run-shoe { margin-top: 3px; }
-  .run-shoe select {
+  /* shoe dropdown with the actual-miles box right beside it */
+  .run-log {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 3px;
+  }
+  .run-log select {
     font: inherit;
     font-size: 12px;
     padding: 2px 4px;
@@ -397,6 +400,7 @@
     background: var(--page);
     color: var(--text-secondary);
     max-width: 150px;
+    min-width: 0;
   }
   .run-notes-input {
     display: block;
@@ -412,8 +416,8 @@
     color: var(--text-primary);
   }
   .run-notes-input::placeholder { color: var(--text-muted); }
-  .run-plan { font-size: 13px; color: var(--text-muted); text-align: right; white-space: nowrap; }
-  .run-actual input {
+  .run-log .actual-input {
+    flex: 0 0 auto;
     width: 52px;
     font: inherit;
     font-size: 13px;
@@ -426,7 +430,6 @@
     color: var(--text-primary);
   }
   .run-row.done { opacity: 0.6; }
-  .run-row.done .run-session { text-decoration: line-through; }
 
   /* ---- edit mode ---- */
   .run-row.editing {
@@ -1466,8 +1469,9 @@ function weekSummary(weekRows) {
   return { planTotal, actualTotal, doneCount, total: weekRows.length, pct };
 }
 
-// One run row. In edit mode this is the editable-fields layout (unchanged);
-// otherwise it's the checkbox + date, session/desc/shoe/notes, plan, actual.
+// One run row. In edit mode this is the editable-fields layout; otherwise
+// it's the checkbox + date, then "<planned> mi <style>", the shoe dropdown
+// with the actual-miles box beside it, and notes.
 function renderRunRow(r) {
   if (editMode) {
     const runStyles = (settings && settings.runStyles) || [];
@@ -1495,13 +1499,11 @@ function renderRunRow(r) {
     `;
   }
   const shoeHtml = shoes.length ? `
-    <div class="run-shoe">
       <select class="shoe-select" data-id="${r.id}" aria-label="Shoe for this run">
         <option value="">No shoe logged</option>
         ${r.shoeId && shoesLoaded && !shoes.some((s) => s.id === r.shoeId) ? `<option value="${escapeHtml(r.shoeId)}" selected>Deleted shoe</option>` : ""}
         ${shoes.map((s) => `<option value="${s.id}" ${r.shoeId === s.id ? "selected" : ""}>${escapeHtml(s.name || "Shoe")}</option>`).join("")}
-      </select>
-    </div>` : "";
+      </select>` : "";
   const dateLabel = fmtRunDate(r.date);
   return `
     <div class="run-row ${r.done ? "done" : ""}">
@@ -1511,16 +1513,15 @@ function renderRunRow(r) {
         ${dateLabel ? `<span class="run-date">${dateLabel}</span>` : ""}
       </div>
       <div class="run-info">
-        <div class="run-session">${escapeHtml(r.session) || "(untitled)"}</div>
-        ${shoeHtml}
+        <div class="run-session">${fmtMi(r.plan)} ${escapeHtml(r.session) || "(untitled)"}</div>
+        <div class="run-log">
+          ${shoeHtml}
+          <input type="number" inputmode="decimal" min="0" step="0.1"
+                 value="${r.actual !== null && r.actual !== undefined ? r.actual : ""}"
+                 data-id="${r.id}" class="actual-input" aria-label="Actual miles">
+        </div>
         <input type="text" class="run-notes-input" placeholder="Notes"
                value="${escapeHtml(r.notes || "")}" data-id="${r.id}" aria-label="Notes for this run">
-      </div>
-      <div class="run-plan">${fmtMi(r.plan)} plan</div>
-      <div class="run-actual">
-        <input type="number" inputmode="decimal" min="0" step="0.1"
-               value="${r.actual !== null && r.actual !== undefined ? r.actual : ""}"
-               data-id="${r.id}" class="actual-input" aria-label="Actual miles">
       </div>
     </div>
   `;

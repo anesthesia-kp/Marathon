@@ -1,8 +1,8 @@
 # Marathon Tracker App — Handoff
 
-Last updated: 2026-10-21 (bug-fix build + test suite; earlier the same night rewritten from the actual code, since the previous version still described the pre-Firebase app)
+Last updated: 2026-10-21 (run-row layout build; earlier the same night: bug-fix build + test suite, and the rewrite from the actual code)
 
-index.html fingerprint: `4caa93ae8c24d9b6cf3c3fb4f954869339ec62d7`
+index.html fingerprint: `3d1d6c755bf5b565f30c764d26ae801a6adad622`
 
 (That line is the `git hash-object index.html` value of the code this file describes. If it doesn't match the current index.html, this file is out of date — stop and fix it from the code before doing anything else. A git hook blocks any commit that changes index.html without updating this line.)
 
@@ -41,7 +41,7 @@ Single `index.html` (HTML + CSS + vanilla JS, no build step, no framework). Fire
 ### Features built
 - **Sign-in:** Google Sign-In via popup. Signed-out screen → app shell. Same Google account = same data on phone and desktop.
 - **Training cycles:** dropdown to switch between active cycles; "Manage cycles" panel to rename, set race date, create, archive, restore, or permanently delete (delete also reverses that cycle's shoe miles). Last-selected cycle is remembered per device in `localStorage` (`marathon-active-cycle-<uid>`) — the only thing still in localStorage.
-- **Schedule tab:** current week pinned on top (= first week, by week number, with any unfinished run), upcoming weeks below, completed weeks collapsed in a right-hand sidebar (stacks below on mobile). Runs inside a week are listed in date order, and "week ending" is the week's latest date. Each run: checkbox + date, run style, shoe dropdown, notes, plan miles, actual miles. (There is no past-due flag — removed by the user's choice.) Checking a run fills actual = plan; unchecking clears it. Typing an actual marks it done.
+- **Schedule tab:** current week pinned on top (= first week, by week number, with any unfinished run), upcoming weeks below, completed weeks collapsed in a right-hand sidebar (stacks below on mobile). Runs inside a week are listed in date order, and "week ending" is the week's latest date. Each run: checkbox + date, then a label reading "<planned> mi <style>" (e.g. "12 mi Quality" — there is no separate "x mi plan" text), then the shoe dropdown with the actual-miles box right beside it, then notes. Completed runs are faded, not crossed out. (There is no past-due flag — removed by the user's choice.) Checking a run fills actual = plan; unchecking clears it. Typing an actual marks it done.
 - **Edit mode** ("Edit plan" button): every week shown in full; edit style (dropdown with "+ Add new style…", saved account-wide), plan miles, date; add/delete runs; add a week.
 - **Stat tiles + overall progress meter** (runs done, % done, planned, actual, remaining). Miles shown rounded to one decimal.
 - **Failed saves** show a red message with a Dismiss button that stays until dismissed (any failed save anywhere in the app).
@@ -61,7 +61,8 @@ users/{uid}/cycles/{cycleId}/runs/{runId}
   shoeMilesApplied (miles this run currently contributes to its shoe's total — the bookkeeping that keeps shoe totals correct;
                     0 once the run is edited after its shoe was deleted),
   shoeAuto (true = shoe came from the cycle default; false = user picked it, including picking "none")
-  desc — legacy field from the Sheet; auto-copied into notes on load, no longer shown
+  desc — legacy field from the Sheet (auto-copied into empty notes on load by migrateDescToNotes). Deleted from
+         every run of the user's account on 2026-10-21 when the user had all notes cleared, so it can't refill them.
 
 users/{uid}/shoes/{shoeId}
   name, miles (the shoe's running total — directly editable AND auto-adjusted by runs via increment()), createdAt
@@ -77,15 +78,16 @@ First sign-in on an empty account seeds: one cycle "Fall 2026 Marathon" (race 20
 
 ## Known issues
 
+0. **App data vs. the Google Sheet (found 2026-10-21, waiting on the user's decision whether to correct the app):** 7 runs ticked done in weeks 19–21 have an empty actual-miles box in the app but miles in the Sheet (wk19 Long 18; wk20 Long 19, Quality 7, Easy 10; wk21 Long 13, Quality 6, Easy 6 = 79 mi). That is the whole difference in "logged" (app 362 vs Sheet 441) and "remaining" (310 vs 231). Cause: the app was seeded on 2026-10-19, before those were filled in on the Sheet; the two don't sync. Also: race-week shakeouts dated Dec 6 in the app vs Dec 1 / Dec 3 in the Sheet; week 23 Long has "0" in its actual box in the app. The Sheet's own Summary tab says 75 total runs but its Schedule tab has 77 (Sheet formula issue; the app's 77 is right).
 1. **Low contrast that was already there before the test suite** (accessibility standard is 4.5:1): white on the blue accent is 4.4:1 (Sign in button, "This week" badge, "Done editing" button); the blue "Sign out" link is 4.2:1; in dark mode the selected tab is a filled blue pill with white text at 3.6:1. The tab one looks unintended: the generic `button.active` rule (blue fill) overrides the `.tab-btn` underline style. Not changed (visual change — the user's call); listed in `KNOWN_A11Y` in `tests/app.spec.mjs` so any *new* problem still fails.
 2. **Security rules: published and checked live, but not emulator-tested.** The user published the rules (same text as the comment at the top of `index.html`) on 2026-10-21 — before that, none had ever been published. Checked live the same night: reads with no sign-in were refused at `/users`, `/users/some-user/cycles` and `/anything-else` (HTTP 403 PERMISSION_DENIED, 0 documents), and the signed-in live site loaded normally. Not checked: a second signed-in account being refused (needs another Google account) and unauthenticated writes (deliberately not attempted against real data; the same rule line governs reads and writes). The Firestore emulator, which would allow full rule tests, can't be downloaded here (storage.googleapis.com is blocked from both the cloud workspace and the computer's shell).
 
 ## Tests
 
 - Everything is in `tests/` — see `tests/README.md`. Firebase is replaced by an in-memory fake (`tests/fake-firebase/`) that behaves like real Firestore where the app depends on it; every real network request is blocked during tests.
-- Run (cloud workspace or anywhere with Node): `cd tests && npm install && npx playwright test` (24 tests: 12 at desktop size, 12 at phone size, ~45 s), and `sh pre-commit-hook.test.sh` (7 tests). In the cloud workspace, Playwright is pinned to 1.56.1 to match the preinstalled Chromium build — don't run `playwright install`.
+- Run (cloud workspace or anywhere with Node): `cd tests && npm install && npx playwright test` (26 tests: 13 at desktop size, 13 at phone size, ~40 s), and `sh pre-commit-hook.test.sh` (7 tests). In the cloud workspace, Playwright is pinned to 1.56.1 to match the preinstalled Chromium build — don't run `playwright install`.
 - To prove a test catches a bug, run it against an older copy: `APP_FILE=/path/to/old/index.html npx playwright test`.
-- Results for this build: app tests 24 passed, 0 failed; hook tests 7 passed, 0 failed. Against the version before this build (past-due label stripped so it doesn't confuse the run lookups), the 6 tests covering this build's fixes fail and the other 6 pass.
+- Results for the current build (run-row layout): app tests 26 passed, 0 failed. Previous build: 24 passed, 0 failed; hook tests 7 passed, 0 failed. Against the version before this build (past-due label stripped so it doesn't confuse the run lookups), the 6 tests covering this build's fixes fail and the other 6 pass.
 
 ## Known environment gotchas (learned the hard way — don't rediscover these)
 
