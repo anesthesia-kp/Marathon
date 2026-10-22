@@ -25,8 +25,8 @@
     --page:            #f9f9f7;
     --surface:         #fcfcfb;
     --text-primary:    #0b0b0b;
-    --text-secondary:  #52514e;
-    --text-muted:      #898781;
+    --text-secondary:  #3a3936;
+    --text-muted:      #6e6c66;
     --gridline:        #e1e0d9;
     --baseline:        #c3c2b7;
     --border:          rgba(11,11,11,0.10);
@@ -43,8 +43,8 @@
       --page:            #0d0d0d;
       --surface:         #1a1a19;
       --text-primary:    #f0efec;
-      --text-secondary:  #c3c2b7;
-      --text-muted:      #898781;
+      --text-secondary:  #d6d5cc;
+      --text-muted:      #a3a199;
       --gridline:        #2c2c2a;
       --baseline:        #383835;
       --border:          rgba(255,255,255,0.10);
@@ -63,14 +63,14 @@
     background: var(--page);
     color: var(--text-primary);
     font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
-    line-height: 1.4;
+    line-height: 1.45;
     padding: 16px;
-    max-width: 760px;
+    max-width: 1100px;
     margin: 0 auto;
   }
 
   h1 { font-size: 22px; margin: 4px 0 2px; }
-  .subtitle { color: var(--text-secondary); font-size: 14px; margin: 0 0 20px; }
+  .subtitle { color: var(--text-secondary); font-size: 15px; margin: 0 0 20px; }
 
   /* ---- sign-in screen ---- */
   .signin-screen {
@@ -181,8 +181,8 @@
     border-radius: 10px;
     padding: 10px 12px;
   }
-  .stat-label { font-size: 12px; color: var(--text-secondary); }
-  .stat-value { font-size: 22px; font-weight: 600; margin-top: 2px; }
+  .stat-label { font-size: 13px; color: var(--text-secondary); }
+  .stat-value { font-size: 23px; font-weight: 600; margin-top: 2px; }
 
   /* ---- meter (progress bar) ---- */
   .meter-track {
@@ -237,7 +237,7 @@
     border: none;
     background: none;
     padding: 8px 4px;
-    font-size: 14px;
+    font-size: 15px;
     color: var(--text-secondary);
     cursor: pointer;
     border-bottom: 2px solid transparent;
@@ -247,7 +247,53 @@
   .tab-panel { display: none; }
   .tab-panel.active { display: block; }
 
-  /* ---- week cards ---- */
+  /* ---- schedule layout: current week + upcoming on the left,
+         completed weeks collapsed in a sidebar on the right.
+         Falls back to a single stacked column on narrow screens,
+         with the sidebar simply flowing below the main column. ---- */
+  .schedule-layout {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 22px;
+    align-items: start;
+  }
+  .schedule-main, .schedule-sidebar { min-width: 0; }
+  .section-heading {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin: 0 0 8px;
+  }
+  .upcoming-heading { margin-top: 18px; }
+  /* On a phone the whole page already scrolls, so upcoming/completed just
+     flow naturally -- a second, nested scroll box inside a page scroll is
+     an awkward double-scroll on touch. On a wide screen, where the two
+     columns sit side by side, each gets its own capped, independently
+     scrollable panel so neither one runs away in height. */
+  @media (min-width: 760px) {
+    .schedule-layout { grid-template-columns: 1fr 300px; }
+    .upcoming-scroll, .completed-scroll {
+      max-height: 600px;
+      overflow-y: auto;
+      padding-right: 4px;
+    }
+  }
+  .current-badge {
+    font-size: 10px;
+    font-weight: 700;
+    background: var(--accent);
+    color: #fff;
+    padding: 2px 7px;
+    border-radius: 10px;
+    margin-left: 8px;
+    vertical-align: middle;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
+
+  /* ---- week cards (current week + upcoming weeks, full detail) ---- */
   .week-card {
     background: var(--surface);
     border: 1px solid var(--border);
@@ -255,6 +301,7 @@
     padding: 12px 14px;
     margin-bottom: 10px;
   }
+  .week-card.current-week { border-color: var(--accent); }
   .week-head {
     display: flex;
     justify-content: space-between;
@@ -263,25 +310,77 @@
     margin-bottom: 8px;
   }
   .week-title { font-size: 15px; font-weight: 600; }
-  .week-sub { font-size: 12px; color: var(--text-secondary); white-space: nowrap; }
+  .week-sub { font-size: 13px; color: var(--text-secondary); white-space: nowrap; }
   .week-card .meter-track { margin-bottom: 10px; }
+
+  /* ---- completed weeks: collapsed rows, expandable in place ---- */
+  .week-row-compact {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 8px 10px;
+    margin-bottom: 8px;
+  }
+  .wrc-head {
+    all: unset;
+    box-sizing: border-box;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+    gap: 8px;
+    cursor: pointer;
+  }
+  .wrc-title { font-size: 13px; font-weight: 600; }
+  .wrc-sub { font-size: 12px; color: var(--text-secondary); white-space: nowrap; }
+  .wrc-chevron { font-size: 11px; color: var(--text-muted); flex: 0 0 auto; }
+  .meter-track.small { height: 6px; margin-top: 6px; }
+  .wrc-body { margin-top: 8px; }
+  .wrc-body .run-row:first-of-type { border-top: 1px solid var(--gridline); }
+  /* The sidebar is only ~300px wide -- the 4-column run-row grid used for
+     the current/upcoming weeks is too cramped there and overlaps, so
+     expanded completed runs stack instead: checkbox+date on one line,
+     then the info block, then plan/actual below it. */
+  .wrc-body .run-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 4px 10px;
+  }
+  .wrc-body .run-check { flex-direction: row; align-items: center; order: 1; }
+  .wrc-body .run-info { order: 2; flex: 1 1 100%; }
+  .wrc-body .run-plan { order: 3; text-align: left; }
+  .wrc-body .run-actual { order: 4; }
+  .wrc-body .run-shoe select, .wrc-body .run-notes-input { max-width: 100%; }
 
   .run-row {
     display: grid;
-    grid-template-columns: 22px 1fr auto auto;
+    grid-template-columns: 46px 1fr auto auto;
     align-items: center;
     gap: 8px;
     padding: 6px 0;
     border-top: 1px solid var(--gridline);
   }
   .run-row:first-of-type { border-top: none; }
+  .run-check {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+  }
   .run-row input[type="checkbox"] {
     width: 18px; height: 18px;
     accent-color: var(--good);
   }
+  .run-date {
+    font-size: 10px;
+    color: var(--text-muted);
+    white-space: nowrap;
+    text-align: center;
+  }
   .run-info { min-width: 0; }
-  .run-session { font-size: 13px; font-weight: 600; }
-  .run-desc { font-size: 12px; color: var(--text-secondary); }
+  .run-session { font-size: 14px; font-weight: 600; }
+  .run-desc { font-size: 13px; color: var(--text-secondary); }
   .run-desc .overdue {
     color: var(--serious);
     font-weight: 600;
@@ -289,7 +388,7 @@
   .run-shoe { margin-top: 3px; }
   .run-shoe select {
     font: inherit;
-    font-size: 11px;
+    font-size: 12px;
     padding: 2px 4px;
     border-radius: 6px;
     border: 1px solid var(--border);
@@ -297,7 +396,21 @@
     color: var(--text-secondary);
     max-width: 150px;
   }
-  .run-plan { font-size: 12px; color: var(--text-muted); text-align: right; white-space: nowrap; }
+  .run-notes-input {
+    display: block;
+    margin-top: 4px;
+    width: 100%;
+    max-width: 320px;
+    font: inherit;
+    font-size: 12px;
+    padding: 4px 7px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--page);
+    color: var(--text-primary);
+  }
+  .run-notes-input::placeholder { color: var(--text-muted); }
+  .run-plan { font-size: 13px; color: var(--text-muted); text-align: right; white-space: nowrap; }
   .run-actual input {
     width: 52px;
     font: inherit;
@@ -379,7 +492,7 @@
     flex: 1 1 140px;
     min-width: 0;
     font: inherit;
-    font-size: 14px;
+    font-size: 15px;
     font-weight: 600;
     padding: 5px 7px;
     border-radius: 6px;
@@ -391,7 +504,7 @@
   .shoe-miles-input {
     width: 70px;
     font: inherit;
-    font-size: 13px;
+    font-size: 14px;
     font-variant-numeric: tabular-nums;
     text-align: right;
     padding: 5px 7px;
@@ -400,7 +513,29 @@
     background: var(--page);
     color: var(--text-primary);
   }
-  .shoe-miles-label { font-size: 12px; color: var(--text-secondary); }
+  .shoe-miles-label { font-size: 13px; color: var(--text-secondary); }
+  .default-shoe-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 10px 12px;
+    margin-bottom: 12px;
+    font-size: 13px;
+  }
+  .default-shoe-row label { color: var(--text-secondary); }
+  .default-shoe-row select {
+    font: inherit;
+    font-size: 13px;
+    padding: 5px 7px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--page);
+    color: var(--text-primary);
+  }
 
   /* ---- reference tab ---- */
   .ref-card {
@@ -410,15 +545,15 @@
     padding: 14px;
     margin-bottom: 14px;
   }
-  .ref-card h3 { margin: 0 0 10px; font-size: 14px; }
-  table.ref-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .ref-card h3 { margin: 0 0 10px; font-size: 15px; }
+  table.ref-table { width: 100%; border-collapse: collapse; font-size: 14px; }
   table.ref-table th, table.ref-table td {
     text-align: left;
     padding: 6px 8px;
     border-top: 1px solid var(--gridline);
   }
-  table.ref-table th { color: var(--text-secondary); font-weight: 500; font-size: 12px; }
-  .ref-note { font-size: 12px; color: var(--text-secondary); margin-top: 8px; }
+  table.ref-table th { color: var(--text-secondary); font-weight: 500; font-size: 13px; }
+  .ref-note { font-size: 13px; color: var(--text-secondary); margin-top: 8px; }
 
   footer {
     font-size: 11px;
@@ -686,6 +821,7 @@ let plan = [];
 let activeCycleId = null;
 let subscribedRunsCycleId = undefined; // sentinel so the very first subscribe always runs
 let editMode = false;
+let expandedCompletedWeeks = new Set(); // which collapsed completed-week rows are open, this session only
 
 let unsubCycles = null;
 let unsubRuns = null;
@@ -732,7 +868,7 @@ async function ensureInitialCycle(uid) {
   const batch = writeBatch(db);
   SEED_PLAN.forEach((row) => {
     const runRef = doc(runsCol);
-    batch.set(runRef, { ...row, shoeId: null, shoeMilesApplied: 0 });
+    batch.set(runRef, { ...row, shoeId: null, shoeMilesApplied: 0, shoeAuto: true, notes: "" });
   });
   await batch.commit();
 }
@@ -776,6 +912,7 @@ function subscribeToCycles() {
       clearDataError();
       renderCycleBar();
       renderManageCycles();
+      renderShoes(); // the default-shoe picker lives on the cycle record
     },
     (err) => {
       console.error(err);
@@ -908,9 +1045,11 @@ async function deleteRun(id) {
 async function addRun(week, afterDate) {
   if (!currentUser || !activeCycleId) return;
   const runsCol = collection(db, "users", currentUser.uid, "cycles", activeCycleId, "runs");
+  const defaultShoeId = activeCycleRecord()?.defaultShoeId || null;
   await addDoc(runsCol, {
     week, date: afterDate || "", session: "", desc: "",
-    plan: 0, actual: null, done: false, shoeId: null, shoeMilesApplied: 0,
+    plan: 0, actual: null, done: false,
+    shoeId: defaultShoeId, shoeMilesApplied: 0, shoeAuto: true, notes: "",
   });
 }
 
@@ -960,6 +1099,40 @@ async function updateShoe(id, patch) {
 async function deleteShoe(id) {
   if (!confirm("Delete this shoe? Runs already tagged with it keep their logged miles, they'll just show as unassigned.")) return;
   await deleteDoc(doc(db, "users", currentUser.uid, "shoes", id));
+}
+
+// The "default shoe" is remembered on the cycle itself. Setting it applies
+// that shoe to every run that hasn't been manually assigned a shoe (or
+// manually set to "no shoe") -- tracked via each run's `shoeAuto` flag, so a
+// deliberate per-run override is never silently clobbered by a later
+// default change. Mileage bookkeeping for every affected run moves in the
+// same atomic batch, exactly like a single-run shoe change does.
+async function setDefaultShoe(shoeId) {
+  if (!currentUser || !activeCycleId) return;
+  await renameCycle(activeCycleId, { defaultShoeId: shoeId || null });
+  await applyDefaultShoeToUnsetRuns(shoeId || null);
+}
+
+async function applyDefaultShoeToUnsetRuns(shoeId) {
+  if (!currentUser || !activeCycleId) return;
+  const eligible = plan.filter((r) => r.shoeAuto !== false && (r.shoeId || null) !== (shoeId || null));
+  if (!eligible.length) return;
+
+  const batch = writeBatch(db);
+  const shoeDelta = {};
+  eligible.forEach((r) => {
+    const runRef = doc(db, "users", currentUser.uid, "cycles", activeCycleId, "runs", r.id);
+    const oldShoeId = r.shoeId || null;
+    const oldApplied = r.shoeMilesApplied || 0;
+    const newApplied = shoeId ? (Number(r.actual) || 0) : 0;
+    if (oldShoeId) shoeDelta[oldShoeId] = (shoeDelta[oldShoeId] || 0) - oldApplied;
+    if (shoeId) shoeDelta[shoeId] = (shoeDelta[shoeId] || 0) + newApplied;
+    batch.update(runRef, { shoeId: shoeId || null, shoeMilesApplied: newApplied, shoeAuto: true });
+  });
+  Object.entries(shoeDelta).forEach(([sid, delta]) => {
+    if (delta !== 0) batch.update(doc(db, "users", currentUser.uid, "shoes", sid), { miles: increment(delta) });
+  });
+  await batch.commit();
 }
 
 /* ============================================================
@@ -1050,6 +1223,14 @@ function fmtWeekEndDate(dateStr) {
   return "week ending " + d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
+// Short date shown right next to each run's checkbox, e.g. "Tue, Oct 20".
+function fmtRunDate(dateStr) {
+  if (!dateStr) return "";
+  const d = new Date(dateStr + "T00:00:00");
+  if (isNaN(d.getTime())) return "";
+  return d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+}
+
 function renderStats() {
   const rows = plan;
   const totalRuns = rows.length;
@@ -1080,141 +1261,245 @@ function renderStats() {
   document.getElementById("overallFill").style.width = overallPct + "%";
 }
 
+function weekSummary(weekRows) {
+  const planTotal = weekRows.reduce((s, r) => s + (r.plan || 0), 0);
+  const actualTotal = weekRows.reduce((s, r) => s + (r.actual || 0), 0);
+  const doneCount = weekRows.filter((r) => r.done).length;
+  const pct = planTotal ? Math.min(100, Math.round((actualTotal / planTotal) * 100)) : 0;
+  return { planTotal, actualTotal, doneCount, total: weekRows.length, pct };
+}
+
+// One run row. In edit mode this is the editable-fields layout (unchanged);
+// otherwise it's the checkbox + date, session/desc/shoe/notes, plan, actual.
+function renderRunRow(r) {
+  if (editMode) {
+    return `
+      <div class="run-row editing">
+        <div class="edit-fields">
+          <input class="f-session" aria-label="Session" placeholder="Session"
+                 value="${escapeHtml(r.session)}" data-id="${r.id}" data-field="session">
+          <input class="f-desc" aria-label="Description" placeholder="Description"
+                 value="${escapeHtml(r.desc)}" data-id="${r.id}" data-field="desc">
+          <input class="f-plan" aria-label="Plan miles" type="number" min="0" step="0.1"
+                 value="${r.plan}" data-id="${r.id}" data-field="plan">
+          <input class="f-date" aria-label="Date" type="date"
+                 value="${r.date || ""}" data-id="${r.id}" data-field="date">
+        </div>
+        <button class="delete-run-btn" data-id="${r.id}" title="Delete this run" aria-label="Delete this run">&times;</button>
+      </div>
+    `;
+  }
+  const isOverdue = !r.done && r.date && r.date < todayISO;
+  const descHtml = isOverdue
+    ? `${escapeHtml(r.desc)} <span class="overdue">&middot; past due</span>`
+    : escapeHtml(r.desc);
+  const shoeHtml = shoes.length ? `
+    <div class="run-shoe">
+      <select class="shoe-select" data-id="${r.id}" aria-label="Shoe for this run">
+        <option value="">No shoe logged</option>
+        ${shoes.map((s) => `<option value="${s.id}" ${r.shoeId === s.id ? "selected" : ""}>${escapeHtml(s.name || "Shoe")}</option>`).join("")}
+      </select>
+    </div>` : "";
+  const dateLabel = fmtRunDate(r.date);
+  return `
+    <div class="run-row ${r.done ? "done" : ""}">
+      <div class="run-check">
+        <input type="checkbox" ${r.done ? "checked" : ""}
+               data-id="${r.id}" class="done-toggle" aria-label="Mark this run done">
+        ${dateLabel ? `<span class="run-date">${dateLabel}</span>` : ""}
+      </div>
+      <div class="run-info">
+        <div class="run-session">${escapeHtml(r.session) || "(untitled)"}</div>
+        <div class="run-desc">${descHtml}</div>
+        ${shoeHtml}
+        <input type="text" class="run-notes-input" placeholder="Notes"
+               value="${escapeHtml(r.notes || "")}" data-id="${r.id}" aria-label="Notes for this run">
+      </div>
+      <div class="run-plan">${fmtMi(r.plan)} plan</div>
+      <div class="run-actual">
+        <input type="number" inputmode="decimal" min="0" step="0.1"
+               placeholder="${r.plan}"
+               value="${r.actual !== null && r.actual !== undefined ? r.actual : ""}"
+               data-id="${r.id}" class="actual-input">
+      </div>
+    </div>
+  `;
+}
+
+// Full-detail week card -- used for the current week and every upcoming
+// week, and for every week when the plan is in edit mode.
+function renderWeekCardFull(wk, weekRows, { isCurrent = false } = {}) {
+  const { planTotal, actualTotal, pct } = weekSummary(weekRows);
+  const rowsHtml = weekRows.map(renderRunRow).join("");
+  const addRunBtn = editMode
+    ? `<button class="add-run-btn" data-week="${wk}" data-date="${weekRows[0].date || ""}">+ Add a run to week ${wk}</button>`
+    : "";
+  return `
+    <div class="week-card ${isCurrent ? "current-week" : ""}">
+      <div class="week-head">
+        <div class="week-title">Week ${wk}${isCurrent ? '<span class="current-badge">This week</span>' : ""}</div>
+        <div class="week-sub">${fmtWeekEndDate(weekRows[weekRows.length - 1].date)} &middot; ${fmtMi(actualTotal)} / ${fmtMi(planTotal)}</div>
+      </div>
+      <div class="meter-track"><div class="meter-fill" style="width:${pct}%"></div></div>
+      ${rowsHtml}
+      ${addRunBtn}
+    </div>
+  `;
+}
+
+// Collapsed row for a completed week -- click to expand it in place for
+// review, without losing your spot in the current/upcoming weeks above.
+function renderCompletedWeekRow(wk, weekRows) {
+  const { planTotal, actualTotal, doneCount, total, pct } = weekSummary(weekRows);
+  const expanded = expandedCompletedWeeks.has(String(wk));
+  return `
+    <div class="week-row-compact">
+      <button class="wrc-head" type="button" data-week="${wk}" aria-expanded="${expanded}">
+        <span class="wrc-title">Week ${wk}</span>
+        <span class="wrc-sub">${fmtWeekEndDate(weekRows[weekRows.length - 1].date)} &middot; ${doneCount}/${total} &middot; ${fmtMi(actualTotal)}</span>
+        <span class="wrc-chevron">${expanded ? "▾" : "▸"}</span>
+      </button>
+      <div class="meter-track small"><div class="meter-fill" style="width:${pct}%"></div></div>
+      ${expanded ? `<div class="wrc-body">${weekRows.map(renderRunRow).join("")}</div>` : ""}
+    </div>
+  `;
+}
+
+function attachRunRowHandlers(root) {
+  root.querySelectorAll(".done-toggle").forEach((el) => {
+    el.addEventListener("change", (e) => {
+      const id = e.target.dataset.id;
+      const run = findRow(id);
+      const patch = { done: e.target.checked };
+      // Checking the box fills in the actual miles with the planned miles
+      // as a starting point -- still freely editable afterward. If actual
+      // already has a value (you logged it before checking), leave it alone.
+      if (e.target.checked && run && (run.actual === null || run.actual === undefined)) {
+        patch.actual = run.plan;
+      }
+      updateRow(id, patch);
+    });
+  });
+  root.querySelectorAll(".actual-input").forEach((el) => {
+    el.addEventListener("change", (e) => {
+      const raw = e.target.value.trim();
+      const val = raw === "" ? null : Number(raw);
+      const patch = { actual: (val === null || isNaN(val)) ? null : val };
+      // Entering a value marks the run done; clearing it does not un-mark
+      // it, since you might just be fixing a typo.
+      if (patch.actual !== null) patch.done = true;
+      updateRow(e.target.dataset.id, patch);
+    });
+  });
+  root.querySelectorAll(".shoe-select").forEach((el) => {
+    el.addEventListener("change", (e) => {
+      // A manual choice here -- including explicitly picking "No shoe
+      // logged" -- always wins over the cycle's default shoe from now on.
+      updateRow(e.target.dataset.id, { shoeId: e.target.value || null, shoeAuto: false });
+    });
+  });
+  root.querySelectorAll(".run-notes-input").forEach((el) => {
+    el.addEventListener("change", (e) => {
+      updateRow(e.target.dataset.id, { notes: e.target.value });
+    });
+  });
+}
+
+function attachEditModeHandlers(root) {
+  root.querySelectorAll(".edit-fields input").forEach((el) => {
+    el.addEventListener("change", (e) => {
+      const id = e.target.dataset.id;
+      const field = e.target.dataset.field;
+      let val = e.target.value;
+      if (field === "plan") val = Number(val) || 0;
+      updateRow(id, { [field]: val });
+    });
+  });
+  root.querySelectorAll(".delete-run-btn").forEach((el) => {
+    el.addEventListener("click", (e) => {
+      const id = e.target.dataset.id;
+      const row = findRow(id);
+      if (!confirm(`Delete "${row.session || "this run"}" (week ${row.week})?`)) return;
+      deleteRun(id);
+    });
+  });
+  root.querySelectorAll(".add-run-btn").forEach((el) => {
+    el.addEventListener("click", (e) => {
+      addRun(Number(e.target.dataset.week), e.target.dataset.date);
+    });
+  });
+  const addWeekBtn = document.getElementById("addWeekBtn");
+  if (addWeekBtn) addWeekBtn.addEventListener("click", addWeek);
+}
+
 function renderSchedule() {
   const weeks = {};
   plan.forEach((r) => {
     if (!weeks[r.week]) weeks[r.week] = [];
     weeks[r.week].push(r);
   });
-
   const weekKeys = Object.keys(weeks).sort((a, b) => a - b);
+  const container = document.getElementById("tab-schedule");
 
-  const html = weekKeys.map((wk) => {
-    const weekRows = weeks[wk];
-    const planTotal = weekRows.reduce((s, r) => s + (r.plan || 0), 0);
-    const actualTotal = weekRows.reduce((s, r) => s + (r.actual || 0), 0);
-    const pct = planTotal ? Math.min(100, Math.round((actualTotal / planTotal) * 100)) : 0;
-
-    const rowsHtml = weekRows.map((r) => {
-      if (editMode) {
-        return `
-          <div class="run-row editing">
-            <div class="edit-fields">
-              <input class="f-session" aria-label="Session" placeholder="Session"
-                     value="${escapeHtml(r.session)}" data-id="${r.id}" data-field="session">
-              <input class="f-desc" aria-label="Description" placeholder="Description"
-                     value="${escapeHtml(r.desc)}" data-id="${r.id}" data-field="desc">
-              <input class="f-plan" aria-label="Plan miles" type="number" min="0" step="0.1"
-                     value="${r.plan}" data-id="${r.id}" data-field="plan">
-              <input class="f-date" aria-label="Date" type="date"
-                     value="${r.date || ""}" data-id="${r.id}" data-field="date">
-            </div>
-            <button class="delete-run-btn" data-id="${r.id}" title="Delete this run" aria-label="Delete this run">&times;</button>
-          </div>
-        `;
-      }
-      const isOverdue = !r.done && r.date && r.date < todayISO;
-      const descHtml = isOverdue
-        ? `${escapeHtml(r.desc)} <span class="overdue">&middot; past due</span>`
-        : escapeHtml(r.desc);
-      const shoeHtml = shoes.length ? `
-        <div class="run-shoe">
-          <select class="shoe-select" data-id="${r.id}" aria-label="Shoe for this run">
-            <option value="">No shoe logged</option>
-            ${shoes.map((s) => `<option value="${s.id}" ${r.shoeId === s.id ? "selected" : ""}>${escapeHtml(s.name || "Shoe")}</option>`).join("")}
-          </select>
-        </div>` : "";
-      return `
-        <div class="run-row ${r.done ? "done" : ""}">
-          <input type="checkbox" ${r.done ? "checked" : ""}
-                 data-id="${r.id}" class="done-toggle">
-          <div class="run-info">
-            <div class="run-session">${escapeHtml(r.session) || "(untitled)"}</div>
-            <div class="run-desc">${descHtml}</div>
-            ${shoeHtml}
-          </div>
-          <div class="run-plan">${fmtMi(r.plan)} plan</div>
-          <div class="run-actual">
-            <input type="number" inputmode="decimal" min="0" step="0.1"
-                   placeholder="${r.plan}"
-                   value="${r.actual !== null && r.actual !== undefined ? r.actual : ""}"
-                   data-id="${r.id}" class="actual-input">
-          </div>
-        </div>
-      `;
-    }).join("");
-
-    const addRunBtn = editMode
-      ? `<button class="add-run-btn" data-week="${wk}" data-date="${weekRows[0].date || ""}">+ Add a run to week ${wk}</button>`
-      : "";
-
-    return `
-      <div class="week-card">
-        <div class="week-head">
-          <div class="week-title">Week ${wk}</div>
-          <div class="week-sub">${fmtWeekEndDate(weekRows[weekRows.length - 1].date)} &middot; ${fmtMi(actualTotal)} / ${fmtMi(planTotal)}</div>
-        </div>
-        <div class="meter-track"><div class="meter-fill" style="width:${pct}%"></div></div>
-        ${rowsHtml}
-        ${addRunBtn}
-      </div>
-    `;
-  }).join("");
-
-  const addWeekHtml = editMode
-    ? `<div class="add-week-card"><button id="addWeekBtn">+ Add a new week</button></div>`
-    : "";
-
-  document.getElementById("tab-schedule").innerHTML = (html || '<p class="muted-note">No runs in this cycle yet.</p>') + addWeekHtml;
-
-  if (editMode) {
-    document.querySelectorAll(".edit-fields input").forEach((el) => {
-      el.addEventListener("change", (e) => {
-        const id = e.target.dataset.id;
-        const field = e.target.dataset.field;
-        let val = e.target.value;
-        if (field === "plan") val = Number(val) || 0;
-        updateRow(id, { [field]: val });
-      });
-    });
-    document.querySelectorAll(".delete-run-btn").forEach((el) => {
-      el.addEventListener("click", (e) => {
-        const id = e.target.dataset.id;
-        const row = findRow(id);
-        if (!confirm(`Delete "${row.session || "this run"}" (week ${row.week})?`)) return;
-        deleteRun(id);
-      });
-    });
-    document.querySelectorAll(".add-run-btn").forEach((el) => {
-      el.addEventListener("click", (e) => {
-        addRun(Number(e.target.dataset.week), e.target.dataset.date);
-      });
-    });
+  if (!weekKeys.length) {
+    const addWeekHtml = editMode ? `<div class="add-week-card"><button id="addWeekBtn">+ Add a new week</button></div>` : "";
+    container.innerHTML = '<p class="muted-note">No runs in this cycle yet.</p>' + addWeekHtml;
     const addWeekBtn = document.getElementById("addWeekBtn");
     if (addWeekBtn) addWeekBtn.addEventListener("click", addWeek);
-  } else {
-    document.querySelectorAll(".done-toggle").forEach((el) => {
-      el.addEventListener("change", (e) => {
-        updateRow(e.target.dataset.id, { done: e.target.checked });
-      });
-    });
-    document.querySelectorAll(".actual-input").forEach((el) => {
-      el.addEventListener("change", (e) => {
-        const raw = e.target.value.trim();
-        const val = raw === "" ? null : Number(raw);
-        const patch = { actual: (val === null || isNaN(val)) ? null : val };
-        // Entering a value marks the run done; clearing it does not un-mark
-        // it, since you might just be fixing a typo.
-        if (patch.actual !== null) patch.done = true;
-        updateRow(e.target.dataset.id, patch);
-      });
-    });
-    document.querySelectorAll(".shoe-select").forEach((el) => {
-      el.addEventListener("change", (e) => {
-        updateRow(e.target.dataset.id, { shoeId: e.target.value || null });
-      });
-    });
+    return;
   }
+
+  if (editMode) {
+    // Edit mode shows every week, in order, full detail -- no collapsing,
+    // so nothing you need to edit is ever tucked away behind a click.
+    const html = weekKeys.map((wk) => renderWeekCardFull(wk, weeks[wk])).join("");
+    container.innerHTML = html + `<div class="add-week-card"><button id="addWeekBtn">+ Add a new week</button></div>`;
+    attachEditModeHandlers(container);
+    return;
+  }
+
+  // Normal view: the current week (the earliest week with any run not yet
+  // checked done) sits on top in full detail. Weeks after it are "upcoming"
+  // and scroll below it. Weeks before it are "completed" and collapse into
+  // a review sidebar on the right (below, on narrow screens).
+  let currentKey = weekKeys.find((wk) => weeks[wk].some((r) => !r.done));
+  if (currentKey === undefined) currentKey = weekKeys[weekKeys.length - 1];
+  const currentIdx = weekKeys.indexOf(currentKey);
+  const completedKeys = weekKeys.slice(0, currentIdx);
+  const upcomingKeys = weekKeys.slice(currentIdx + 1);
+
+  const currentHtml = renderWeekCardFull(currentKey, weeks[currentKey], { isCurrent: true });
+  const upcomingHtml = upcomingKeys.length
+    ? upcomingKeys.map((wk) => renderWeekCardFull(wk, weeks[wk])).join("")
+    : '<p class="muted-note">Nothing scheduled after this week yet.</p>';
+  const completedHtml = completedKeys.length
+    ? completedKeys.slice().reverse().map((wk) => renderCompletedWeekRow(wk, weeks[wk])).join("")
+    : '<p class="muted-note">No completed weeks yet.</p>';
+
+  container.innerHTML = `
+    <div class="schedule-layout">
+      <div class="schedule-main">
+        <div class="section-heading">Current week</div>
+        ${currentHtml}
+        <div class="section-heading upcoming-heading">Upcoming</div>
+        <div class="upcoming-scroll">${upcomingHtml}</div>
+      </div>
+      <div class="schedule-sidebar">
+        <div class="section-heading">Completed &middot; tap to review</div>
+        <div class="completed-scroll">${completedHtml}</div>
+      </div>
+    </div>
+  `;
+
+  attachRunRowHandlers(container);
+  container.querySelectorAll(".wrc-head").forEach((el) => {
+    el.addEventListener("click", (e) => {
+      const wk = e.currentTarget.dataset.week;
+      if (expandedCompletedWeeks.has(wk)) expandedCompletedWeeks.delete(wk);
+      else expandedCompletedWeeks.add(wk);
+      renderSchedule();
+    });
+  });
 }
 
 function renderAll() {
@@ -1238,11 +1523,26 @@ function renderShoes() {
     </div>
   `).join("");
 
+  const cycle = activeCycleRecord();
+  const defaultShoeId = cycle ? (cycle.defaultShoeId || "") : "";
+  const defaultRowHtml = shoes.length ? `
+    <div class="default-shoe-row">
+      <label for="defaultShoeSelect">Default shoe for runs</label>
+      <select id="defaultShoeSelect" aria-label="Default shoe for runs">
+        <option value="">No default</option>
+        ${shoes.map((s) => `<option value="${s.id}" ${defaultShoeId === s.id ? "selected" : ""}>${escapeHtml(s.name || "Shoe")}</option>`).join("")}
+      </select>
+    </div>` : "";
+
   panel.innerHTML = `
+    ${defaultRowHtml}
     ${rows || '<p class="muted-note">No shoes yet.</p>'}
     <button id="addShoeBtn" class="add-run-btn">+ Add a shoe</button>
-    <p class="ref-note">Pick a shoe under any logged run and its miles add up here automatically. You can also type a number directly into a shoe's mileage — for miles from before you started tracking, or to fix a mistake.</p>
+    <p class="ref-note">Pick a shoe under any logged run and its miles add up here automatically. The default shoe above is applied to every run you haven't manually assigned a different shoe to. You can also type a number directly into a shoe's mileage — for miles from before you started tracking, or to fix a mistake.</p>
   `;
+
+  const defSel = document.getElementById("defaultShoeSelect");
+  if (defSel) defSel.addEventListener("change", (e) => setDefaultShoe(e.target.value || null));
 
   panel.querySelectorAll(".shoe-name-input").forEach((el) => {
     el.addEventListener("change", (e) => updateShoe(e.target.dataset.id, { name: e.target.value }));
@@ -1294,7 +1594,7 @@ document.getElementById("exportBtn").addEventListener("click", () => {
     cycleName: cycle ? cycle.name : "",
     rows: plan.map((r) => ({
       week: r.week, date: r.date, session: r.session,
-      desc: r.desc, plan: r.plan, actual: r.actual, done: r.done,
+      desc: r.desc, plan: r.plan, actual: r.actual, done: r.done, notes: r.notes || "",
     })),
   };
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
@@ -1342,8 +1642,10 @@ document.getElementById("importFile").addEventListener("change", (e) => {
           plan: Number(row.plan) || 0,
           actual: row.actual === null || row.actual === undefined ? null : Number(row.actual),
           done: !!row.done,
+          notes: row.notes || "",
           shoeId: null,
           shoeMilesApplied: 0,
+          shoeAuto: true,
         });
       });
       await batch.commit();
