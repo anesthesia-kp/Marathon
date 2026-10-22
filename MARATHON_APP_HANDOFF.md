@@ -74,7 +74,7 @@ users/{uid}/shoes/{shoeId}
 users/{uid}/settings/{auto-id}      (exactly one doc per account)
   runStyles [string], goalPace, paceZones [{zone, pace, feel}], hrMax, hrRest, heartRateZones [{zone, bpm}], hrNote, createdAt
 ```
-**The user's live data (as of 2026-10-22):** one cycle, "Fall 2026 Marathon": 77 runs, 57 done, 672 planned, 448 logged. Matches the Google Sheet run for run except week 22 Quality, which has its 7 actual miles in the app but a blank actual box in the Sheet (so the Sheet shows 441). Two shoes, Mach 6 and Clifton 11, whose totals were typed in by hand (Clifton 11's total doesn't equal the sum of its runs — it's the user's real figure); Clifton 11 is the default shoe and is tagged on every run. Before the Edit-total build, ticking a run that a hand-typed total already included counted it twice (week 22 Quality, 2026-10-22; reversed, Clifton 11 back to 169) — the set-point design fixes this.
+**The user's live data (as of 2026-10-22):** one cycle, "Fall 2026 Marathon": 77 runs, 57 done, 672 planned, 448 logged. Matches the Google Sheet run for run except week 22 Quality, which has its 7 actual miles in the app but a blank actual box in the Sheet (so the Sheet shows 441). Two shoes, Mach 6 (234) and Clifton 11 (169) — the user's real figures, saved as set points on 2026-10-22 with every run's recorded contribution brought in line (0 runs out of step afterwards); Clifton 11 is the default shoe and is tagged on every run. Before the Edit-total build, ticking a run that a hand-typed total already included counted it twice (week 22 Quality, 2026-10-22; reversed, Clifton 11 back to 169) — the set-point design fixes this.
 
 First sign-in on an empty account seeds: one cycle "Fall 2026 Marathon" (race 2026-12-06) from `SEED_PLAN` (weeks 1–28, 77 runs, 672 planned miles), three shoes ("Shoe 1–3"), and the settings doc.
 
@@ -101,7 +101,7 @@ First sign-in on an empty account seeds: one cycle "Fall 2026 Marathon" (race 20
 - **Clipboard paste into Google Sheets**: use `cmd+v`, not `ctrl+v` (Mac). `ctrl+v` triggers Sheets' "Enable copy/cut/paste?" dialog.
 - **Artifact preview of this app**: strip the outer `<!doctype>/<html>/<head>/<meta>/<body>` tags before publishing (the Artifact tool wraps the page itself), and add a `:root[data-theme="dark"]` block alongside the `@media (prefers-color-scheme: dark)` block. Real Google sign-in from an Artifact page will only work if that page's domain is in Firebase Auth's authorized domains — untested, so expect to test sign-in on the live site instead.
 - **CSS specificity (fixed, don't reintroduce)**: elements toggled with `[hidden]` that also have a `display:` rule need an explicit `X[hidden] { display: none; }` rule (see the combined rule under "controls" in the CSS), or they show when they should be hidden.
-- **`device_commit_files` can look like it silently failed**: an immediate re-read can show stale content. Retry and re-verify before concluding anything is corrupt.
+- **`device_commit_files` can silently not land**: it can report "written" while the computer still has the old file (happened 2026-10-22 with `tests/app.spec.mjs`). After every copy, compare `git hash-object <file>` on the computer with the workspace copy; if they differ, re-run with `force: true` and check again. Check `git status` before committing.
 - GitHub Pages "Build and deployment" settings only appear for a public repo (or a paid plan for private). This repo is public.
 
 ## Files
