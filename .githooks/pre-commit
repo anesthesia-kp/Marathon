@@ -1,0 +1,37 @@
+#!/bin/sh
+# Marathon Tracker — docs-in-sync guard.
+#
+# Refuses any commit that changes index.html unless MARATHON_APP_HANDOFF.md
+# in the same commit carries that exact index.html's fingerprint on its
+# "index.html fingerprint:" line. That forces the handoff to be revisited
+# every time the app code changes, so it can't silently go stale again.
+#
+# Get the fingerprint to paste:   git hash-object index.html
+# Installed copy lives at .git/hooks/pre-commit (see MARATHON_APP_HANDOFF.md).
+# Never bypass with --no-verify.
+
+# Only care about commits that touch the app code.
+if git diff --cached --quiet -- index.html; then
+  exit 0
+fi
+
+# Fingerprint of index.html exactly as it will be committed (deleted -> empty).
+code_fp=$(git rev-parse --verify --quiet :index.html)
+
+# Fingerprint recorded in the handoff as it will be committed.
+doc_fp=$(git show :MARATHON_APP_HANDOFF.md 2>/dev/null \
+  | sed -n 's/^.*index\.html fingerprint: `\([0-9a-f]\{40\}\)`.*$/\1/p' \
+  | head -n 1)
+
+if [ -n "$code_fp" ] && [ "$code_fp" = "$doc_fp" ]; then
+  exit 0
+fi
+
+echo "" >&2
+echo "COMMIT BLOCKED: index.html changed but MARATHON_APP_HANDOFF.md wasn't updated to match." >&2
+echo "  index.html fingerprint (staged): ${code_fp:-<file deleted>}" >&2
+echo "  fingerprint in handoff (staged): ${doc_fp:-<missing>}" >&2
+echo "Update the handoff (Current state / Known issues / data model as needed), set its" >&2
+echo "'index.html fingerprint:' line to the staged value above, stage both files, commit again." >&2
+echo "" >&2
+exit 1
