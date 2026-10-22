@@ -72,7 +72,7 @@ users/{uid}/shoes/{shoeId}
 users/{uid}/settings/{auto-id}      (exactly one doc per account)
   runStyles [string], goalPace, paceZones [{zone, pace, feel}], hrMax, hrRest, heartRateZones [{zone, bpm}], hrNote, createdAt
 ```
-**The user's live data (as of 2026-10-22):** one cycle, "Fall 2026 Marathon", matches the Google Sheet run for run (77 runs, 57 done, 672 planned, 441 logged). Two shoes, Mach 6 and Clifton 11, whose totals were typed in by hand (Clifton 11's total no longer equals the sum of its runs — it's the user's real figure); Clifton 11 is the default shoe and is tagged on every run.
+**The user's live data (as of 2026-10-22):** one cycle, "Fall 2026 Marathon": 77 runs, 57 done, 672 planned, 448 logged. Matches the Google Sheet run for run except week 22 Quality, which has its 7 actual miles in the app but a blank actual box in the Sheet (so the Sheet shows 441). Two shoes, Mach 6 and Clifton 11, whose totals were typed in by hand (Clifton 11's total doesn't equal the sum of its runs — it's the user's real figure); Clifton 11 is the default shoe and is tagged on every run. Ticking or logging a run still adds its miles to the shoe automatically, so a hand-typed total that already includes that run gets it counted twice — happened with week 22 Quality on 2026-10-22 and was reversed (Clifton 11 back to 169).
 
 First sign-in on an empty account seeds: one cycle "Fall 2026 Marathon" (race 2026-12-06) from `SEED_PLAN` (weeks 1–28, 77 runs, 672 planned miles), three shoes ("Shoe 1–3"), and the settings doc.
 
