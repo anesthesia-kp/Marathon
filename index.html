@@ -525,6 +525,7 @@
   }
   .shoe-total-input[aria-invalid="true"] { border-color: var(--error-text); }
   .shoe-total-label { font-size: 13px; color: var(--text-secondary); }
+  .retired-heading { margin-top: 18px; }
   .shoe-setpoint {
     flex: 1 1 100%;
     font-size: 12px;
@@ -973,6 +974,44 @@ function shoeStillExists(shoeId) {
   if (!shoesLoaded) return true; // shoe list not loaded yet -- can't tell, so assume it does
   return shoes.some((s) => s.id === shoeId);
 }
+// Retired shoes stay in the database (with their history and miles) but
+// aren't offered for new runs or as the default shoe.
+function activeShoes() {
+  return shoes.filter((s) => !s.retired);
+}
+// Can new miles be assigned to this shoe? (exists and isn't retired)
+function shoeUsable(shoeId) {
+  if (!shoeStillExists(shoeId)) return false;
+  const s = shoes.find((x) => x.id === shoeId);
+  return !(s && s.retired);
+}
+function sameShoeName(a, b) {
+  return String(a || "").trim().toLowerCase() === String(b || "").trim().toLowerCase();
+}
+// Two *active* shoes may not share a name (retired ones don't count, so a
+// new pair can reuse the name of a retired one).
+function activeShoeNameTaken(name, exceptId) {
+  return activeShoes().some((s) => s.id !== exceptId && sameShoeName(s.name, name));
+}
+function retiredMonth(s) {
+  const d = s.retiredAt && s.retiredAt.toDate ? s.retiredAt.toDate() : null;
+  return d ? d.toLocaleDateString(undefined, { month: "short", year: "numeric" }) : "";
+}
+// The name shown for a shoe. Retired pairs carry their retirement date, e.g.
+// "Clifton 11 (retired Oct 2026)", so two retired pairs with the same name
+// never look alike; if they'd still match (same name, same month), the
+// full date is used.
+function shoeLabel(s) {
+  const name = s.name || "Shoe";
+  if (!s.retired) return name;
+  const month = retiredMonth(s);
+  if (!month) return `${name} (retired)`;
+  const clash = shoes.some((o) => o.id !== s.id && o.retired && sameShoeName(o.name, name) && retiredMonth(o) === month);
+  if (!clash) return `${name} (retired ${month})`;
+  const full = s.retiredAt.toDate().toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+  return `${name} (retired ${full})`;
+}
+
 function addShoeDelta(deltas, shoeId, miles) {
   if (!miles || !shoeStillExists(shoeId)) return;
   deltas[shoeId] = (deltas[shoeId] || 0) + miles;
@@ -1230,7 +1269,7 @@ async function addRun(week, afterDate) {
   if (!currentUser || !activeCycleId) return;
   const runsCol = collection(db, "users", currentUser.uid, "cycles", activeCycleId, "runs");
   const cycleDefault = activeCycleRecord()?.defaultShoeId || null;
-  const defaultShoeId = shoeStillExists(cycleDefault) ? cycleDefault : null;
+  const defaultShoeId = shoeUsable(cycleDefault) ? cycleDefault : null;
   await addDoc(runsCol, {
     week, date: afterDate || "", session: "",
     plan: 0, actual: null, done: false,
@@ -1271,11 +1310,56 @@ function subscribeToShoes() {
 }
 
 async function addShoe() {
-  const name = window.prompt("Shoe name?", "New shoe");
+  let name = window.prompt("Shoe name?", "New shoe");
+  while (name !== null) {
+    name = name.trim() || "New shoe";
+    if (!activeShoeNameTaken(name)) break;
+    name = window.prompt(`You already have an active shoe called "${name}". Pick a different name (for example, add the color):`, name);
+  }
   if (name === null) return;
   await addDoc(collection(db, "users", currentUser.uid, "shoes"), {
-    name: name || "New shoe", miles: 0, createdAt: serverTimestamp(),
+    name, miles: 0, createdAt: serverTimestamp(),
   });
+}
+
+// Retiring keeps the shoe, its miles and every ticked run logged in it --
+// history isn't touched. It stops being offered for new runs: runs not yet
+// ticked (in any cycle) are released from it, so the next default shoe can
+// apply to them, and any cycle using it as the default shoe is cleared.
+// The shoe itself is marked retired in the final batch.
+async function retireShoe(id) {
+  const uid = currentUser.uid;
+  const writes = [];
+  for (const c of cycles) {
+    if (c.defaultShoeId === id) {
+      writes.push((b) => b.update(doc(db, "users", uid, "cycles", c.id), { defaultShoeId: null }));
+    }
+    const snap = await getDocs(collection(db, "users", uid, "cycles", c.id, "runs"));
+    snap.docs.forEach((d) => {
+      const r = d.data();
+      if (r.shoeId === id && !r.done) {
+        writes.push((b) => b.update(d.ref, { shoeId: null, shoeMilesApplied: 0, shoeAuto: true }));
+      }
+    });
+  }
+  writes.push((b) => b.update(doc(db, "users", uid, "shoes", id), { retired: true, retiredAt: serverTimestamp() }));
+  if (editingShoeTotalId === id) editingShoeTotalId = null;
+  const CHUNK = 450; // Firestore allows at most 500 writes per batch
+  for (let i = 0; i < writes.length; i += CHUNK) {
+    const batch = writeBatch(db);
+    writes.slice(i, i + CHUNK).forEach((write) => write(batch));
+    await batch.commit();
+  }
+}
+
+async function unretireShoe(id) {
+  const s = shoes.find((x) => x.id === id);
+  if (!s) return;
+  if (activeShoeNameTaken(s.name, id)) {
+    alert(`You already have an active shoe called "${s.name}". Rename one of them first, then un-retire this pair.`);
+    return;
+  }
+  await updateShoe(id, { retired: false, retiredAt: null });
 }
 
 async function updateShoe(id, patch) {
@@ -1336,11 +1420,11 @@ async function setDefaultShoe(shoeId) {
 
 async function applyDefaultShoeToUnsetRuns(shoeId) {
   if (!currentUser || !activeCycleId) return;
-  if (!shoeStillExists(shoeId)) shoeId = null;
+  if (!shoeUsable(shoeId)) shoeId = null;
   const eligible = plan.filter((r) =>
     r.shoeAuto !== false &&
     (r.shoeId || null) !== (shoeId || null) &&
-    !(r.shoeId && !shoeStillExists(r.shoeId)) // run belongs to a deleted shoe -- leave its history alone
+    !(r.shoeId && !shoeUsable(r.shoeId)) // run belongs to a retired or deleted shoe -- leave its history alone
   );
   if (!eligible.length) return;
 
@@ -1552,11 +1636,15 @@ function renderRunRow(r) {
       </div>
     `;
   }
+  // Offer active shoes, plus this run's own shoe if it has since been retired
+  // (shown with its retirement date) so past runs keep showing what was worn.
+  const ownShoe = shoes.find((s) => s.id === r.shoeId);
+  const shoeChoices = activeShoes().concat(ownShoe && ownShoe.retired ? [ownShoe] : []);
   const shoeHtml = shoes.length ? `
       <select class="shoe-select" data-id="${r.id}" aria-label="Shoe for this run">
         <option value="">No shoe logged</option>
-        ${r.shoeId && shoesLoaded && !shoes.some((s) => s.id === r.shoeId) ? `<option value="${escapeHtml(r.shoeId)}" selected>Deleted shoe</option>` : ""}
-        ${shoes.map((s) => `<option value="${s.id}" ${r.shoeId === s.id ? "selected" : ""}>${escapeHtml(s.name || "Shoe")}</option>`).join("")}
+        ${r.shoeId && shoesLoaded && !ownShoe ? `<option value="${escapeHtml(r.shoeId)}" selected>Deleted shoe</option>` : ""}
+        ${shoeChoices.map((s) => `<option value="${s.id}" ${r.shoeId === s.id ? "selected" : ""}>${escapeHtml(shoeLabel(s))}</option>`).join("")}
       </select>` : "";
   const dateLabel = fmtRunDate(r.date);
   return `
@@ -1807,7 +1895,7 @@ function renderShoes() {
   const draft = draftInput ? draftInput.value : null;
   if (editingShoeTotalId && !shoes.some((s) => s.id === editingShoeTotalId)) editingShoeTotalId = null;
 
-  const rows = shoes.map((s) => {
+  const card = (s) => {
     const editing = s.id === editingShoeTotalId;
     const totalHtml = editing ? `
       <div class="shoe-total">
@@ -1822,38 +1910,68 @@ function renderShoes() {
         <button class="shoe-edit-btn" data-id="${s.id}" type="button" aria-label="Edit total for ${escapeHtml(s.name || "this shoe")}">Edit total</button>
       </div>`;
     const setPoint = shoeSetPointText(s);
+    const retireBtn = s.retired
+      ? `<button class="shoe-unretire-btn" data-id="${s.id}" type="button">Un-retire</button>`
+      : `<button class="shoe-retire-btn" data-id="${s.id}" type="button">Retire</button>`;
+    const retiredNote = s.retired ? `<div class="shoe-setpoint">Past runs show it as &ldquo;${escapeHtml(shoeLabel(s))}&rdquo;</div>` : "";
     return `
-    <div class="shoe-card">
+    <div class="shoe-card${s.retired ? " retired" : ""}">
       <input class="shoe-name-input" data-id="${s.id}" data-field="name" value="${escapeHtml(s.name || "")}" placeholder="Shoe name" aria-label="Shoe name">
       ${totalHtml}
+      ${retireBtn}
       <button class="delete-run-btn" data-id="${s.id}" title="Delete this shoe" aria-label="Delete this shoe">&times;</button>
       ${setPoint ? `<div class="shoe-setpoint">${setPoint}</div>` : ""}
+      ${retiredNote}
     </div>`;
-  }).join("");
+  };
+  const active = activeShoes();
+  const retired = shoes.filter((s) => s.retired);
+  const rows = active.map(card).join("");
+  const retiredHtml = retired.length
+    ? `<div class="section-heading retired-heading">Retired</div>${retired.map(card).join("")}`
+    : "";
 
   const cycle = activeCycleRecord();
   const defaultShoeId = cycle ? (cycle.defaultShoeId || "") : "";
-  const defaultRowHtml = shoes.length ? `
+  const defaultRowHtml = active.length ? `
     <div class="default-shoe-row">
       <label for="defaultShoeSelect">Default shoe for runs</label>
       <select id="defaultShoeSelect" aria-label="Default shoe for runs">
         <option value="">No default</option>
-        ${shoes.map((s) => `<option value="${s.id}" ${defaultShoeId === s.id ? "selected" : ""}>${escapeHtml(s.name || "Shoe")}</option>`).join("")}
+        ${active.map((s) => `<option value="${s.id}" ${defaultShoeId === s.id ? "selected" : ""}>${escapeHtml(s.name || "Shoe")}</option>`).join("")}
       </select>
     </div>` : "";
 
   panel.innerHTML = `
     ${defaultRowHtml}
-    ${rows || '<p class="muted-note">No shoes yet.</p>'}
+    ${rows || '<p class="muted-note">No active shoes.</p>'}
     <button id="addShoeBtn" class="add-run-btn">+ Add a shoe</button>
-    <p class="ref-note">Ticked runs add their miles to the shoe they're tagged with (the actual miles, or the planned miles if you didn't enter any); unticking takes them back off. The default shoe above is applied to every run you haven't manually assigned a different shoe to. Use <strong>Edit total</strong> to enter a shoe's real mileage: from then on, only runs you tick or untick after that change it.</p>
+    ${retiredHtml}
+    <p class="ref-note">Ticked runs add their miles to the shoe they're tagged with (the actual miles, or the planned miles if you didn't enter any); unticking takes them back off. The default shoe above is applied to every run you haven't manually assigned a different shoe to. Use <strong>Edit total</strong> to enter a shoe's real mileage: from then on, only runs you tick or untick after that change it. <strong>Retire</strong> a worn-out pair to stop offering it for new runs; its miles and past runs are kept, labelled with the retirement date.</p>
   `;
 
   const defSel = document.getElementById("defaultShoeSelect");
   if (defSel) defSel.addEventListener("change", (e) => setDefaultShoe(e.target.value || null));
 
   panel.querySelectorAll(".shoe-name-input").forEach((el) => {
-    el.addEventListener("change", (e) => updateShoe(e.target.dataset.id, { name: e.target.value }));
+    el.addEventListener("change", (e) => {
+      const id = e.target.dataset.id;
+      const s = shoes.find((x) => x.id === id);
+      const name = e.target.value.trim();
+      if (!name) { e.target.value = s ? s.name || "" : ""; return; }
+      if (s && !s.retired && activeShoeNameTaken(name, id)) {
+        alert(`You already have an active shoe called "${name}". Pick a different name.`);
+        e.target.value = s.name || "";
+        return;
+      }
+      updateShoe(id, { name });
+    });
+  });
+  panel.querySelectorAll(".shoe-retire-btn").forEach((el) => {
+    el.addEventListener("click", (e) => retireShoe(e.currentTarget.dataset.id));
+  });
+  panel.querySelectorAll(".shoe-unretire-btn").forEach((el) => {
+    el.addEventListener("click", (e) => unretireShoe(e.currentTarget.dataset.id));
   });
   panel.querySelectorAll(".shoe-edit-btn").forEach((el) => {
     el.addEventListener("click", (e) => {

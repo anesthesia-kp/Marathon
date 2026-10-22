@@ -31,7 +31,7 @@ class FakeFirestoreError extends Error {
 
 const store = new Map(); // full document path -> plain data object
 const listeners = new Set(); // { colPath, next }
-let clock = Date.UTC(2026, 0, 1);
+let clock = 0;
 
 // Deterministic pseudo-random 20-character IDs (like Firestore auto-IDs).
 let seed = 20261021;
@@ -97,7 +97,8 @@ function resolveFields(existing, patch) {
   const out = { ...existing };
   for (const [k, v] of Object.entries(patch)) {
     if (v instanceof IncrementSentinel) out[k] = (Number(existing[k]) || 0) + v.n;
-    else if (v instanceof ServerTimestampSentinel) out[k] = new Timestamp((clock += 1000));
+    // Uses the page's clock (so tests can fix the date), always increasing so creation order is kept.
+    else if (v instanceof ServerTimestampSentinel) out[k] = new Timestamp((clock = Math.max(Date.now(), clock + 1)));
     else out[k] = clone(v);
   }
   return out;

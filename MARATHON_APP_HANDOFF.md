@@ -1,8 +1,8 @@
 # Marathon Tracker App — Handoff
 
-Last updated: 2026-10-22 (shoe "Edit total" set-point build; earlier: run-row layout, bug-fix build + test suite, rewrite from the actual code)
+Last updated: 2026-10-22 (retire-shoes build; earlier: shoe "Edit total" set points, run-row layout, bug-fix build + test suite, rewrite from the actual code)
 
-index.html fingerprint: `3190616e5638bb15aaf167d38189cde53520e131`
+index.html fingerprint: `00a03a3fc0180b117a380ccb03c187bd516ddab0`
 
 (That line is the `git hash-object index.html` value of the code this file describes. If it doesn't match the current index.html, this file is out of date — stop and fix it from the code before doing anything else. A git hook blocks any commit that changes index.html without updating this line.)
 
@@ -45,7 +45,7 @@ Single `index.html` (HTML + CSS + vanilla JS, no build step, no framework). Fire
 - **Edit mode** ("Edit plan" button): every week shown in full; edit style (dropdown with "+ Add new style…", saved account-wide), plan miles, date; add/delete runs; add a week.
 - **Stat tiles + overall progress meter** (runs done, % done, planned, actual, remaining). Miles shown rounded to one decimal.
 - **Failed saves** show a red message with a Dismiss button that stays until dismissed (any failed save anywhere in the app).
-- **Shoes tab:** add/rename/delete shoes; each shows its total as text with an **Edit total** button (inline box, Save/Enter, Cancel/Escape; empty or negative is refused) and a line like "Set to 169 mi on Oct 22 · +7 mi since". Saving a total makes it a **set point**: every run tagged with that shoe, in every cycle, has what it counts right now recorded as its contribution (`shoeMilesApplied`), so afterwards only changes move the total (tick a run that wasn't ticked → add; untick one that was → subtract). A run counts toward its shoe if ticked: its actual miles, or its planned miles if the actual box is empty. Set a per-cycle default shoe (auto-applied to runs the user hasn't manually assigned — `shoeAuto` flag). Shoe totals move automatically and atomically with run edits (shown rounded to one decimal). **Deleting a shoe never rewrites history:** runs logged with it keep the tag (their dropdown shows "Deleted shoe") and their miles, are never moved onto a new default shoe, and can still be edited normally.
+- **Shoes tab:** add/rename/delete shoes; each shows its total as text with an **Edit total** button (inline box, Save/Enter, Cancel/Escape; empty or negative is refused) and a line like "Set to 169 mi on Oct 22 · +7 mi since". Saving a total makes it a **set point**: every run tagged with that shoe, in every cycle, has what it counts right now recorded as its contribution (`shoeMilesApplied`), so afterwards only changes move the total (tick a run that wasn't ticked → add; untick one that was → subtract). A run counts toward its shoe if ticked: its actual miles, or its planned miles if the actual box is empty. **Retire / Un-retire:** retired shoes move to a "Retired" section, keep their miles and every ticked run, and are labelled with the retirement date wherever they appear ("Clifton 11 (retired Oct 2026)"; full date if two retired pairs would otherwise match). Retired shoes aren't offered for new runs or as the default; retiring clears it as any cycle's default and releases it from runs not yet ticked (all cycles). Two **active** shoes can't share a name (case/space-insensitive) — add, rename and un-retire refuse it; a new pair may reuse a retired pair's name. Set a per-cycle default shoe (auto-applied to runs the user hasn't manually assigned — `shoeAuto` flag). Shoe totals move automatically and atomically with run edits (shown rounded to one decimal). **Deleting a shoe never rewrites history:** runs logged with it keep the tag (their dropdown shows "Deleted shoe") and their miles, are never moved onto a new default shoe, and can still be edited normally.
 - **Reference tab:** goal pace (drives the header subtitle), pace-zone table, max/rest HR, HR-zone table, HR note — all editable, rows can be added/deleted.
 - **Export / import** of the active cycle as JSON (import replaces the cycle's runs, reversing their shoe miles first).
 - Light/dark theme via CSS custom properties; responsive phone + desktop layout.
@@ -67,7 +67,8 @@ users/{uid}/cycles/{cycleId}/runs/{runId}
 
 users/{uid}/shoes/{shoeId}
   name, miles (the shoe's running total — set by "Edit total" and auto-adjusted by runs via increment()), createdAt,
-  totalSetTo (last total typed via Edit total), totalSetAt (when)
+  totalSetTo (last total typed via Edit total), totalSetAt (when),
+  retired (bool), retiredAt (when it was retired; null after un-retire)
   (a run's shoeId may point at a shoe that has been deleted — kept on purpose as history; all shoe-total
    bookkeeping goes through addShoeDelta/applyShoeDeltas, which skip shoes that no longer exist)
 
@@ -88,9 +89,9 @@ First sign-in on an empty account seeds: one cycle "Fall 2026 Marathon" (race 20
 ## Tests
 
 - Everything is in `tests/` — see `tests/README.md`. Firebase is replaced by an in-memory fake (`tests/fake-firebase/`) that behaves like real Firestore where the app depends on it; every real network request is blocked during tests.
-- Run (cloud workspace or anywhere with Node): `cd tests && npm install && npx playwright test` (30 tests: 15 at desktop size, 15 at phone size, ~45 s), and `sh pre-commit-hook.test.sh` (7 tests). In the cloud workspace, Playwright is pinned to 1.56.1 to match the preinstalled Chromium build — don't run `playwright install`.
+- Run (cloud workspace or anywhere with Node): `cd tests && npm install && npx playwright test --workers=3` (34 tests: 17 at desktop size, 17 at phone size, ~60 s; the accessibility test has a 2-minute limit because its 11 scans are slow under parallel load), and `sh pre-commit-hook.test.sh` (7 tests). In the cloud workspace, Playwright is pinned to 1.56.1 to match the preinstalled Chromium build — don't run `playwright install`.
 - To prove a test catches a bug, run it against an older copy: `APP_FILE=/path/to/old/index.html npx playwright test`.
-- Results for the current build (Edit total): app tests 30 passed, 0 failed, on three consecutive runs. Hook tests 7 passed, 0 failed.
+- Results for the current build (retire shoes): app tests 34 passed, 0 failed, on three consecutive runs. Hook tests 7 passed, 0 failed.
 - Test-writing gotcha: ticking/unticking can move a week between the current card and the completed column, which replaces the checkbox mid-action — use `.click()` and then check the saved data, not `.check()`/`.uncheck()`, for those. Against the version before this build (past-due label stripped so it doesn't confuse the run lookups), the 6 tests covering this build's fixes fail and the other 6 pass.
 
 ## Known environment gotchas (learned the hard way — don't rediscover these)

@@ -396,6 +396,97 @@ test("Edit total also covers runs in archived cycles", async ({ page, dialogs })
   await expect.poll(() => shoeMiles(page, "Shoe 2")).toBe(295);
 });
 
+async function renameShoe(page, from, to) {
+  await gotoTab(page, "Shoes");
+  const input = page.locator(`.shoe-card:not(.retired) input.shoe-name-input[value="${from}"]`); // active shoes only
+  await input.fill(to);
+  await input.press("Tab");
+}
+const selectedShoeText = (row) => row.locator(".shoe-select option:checked");
+
+test("retiring a shoe keeps its history, frees upcoming runs, and labels it with the date", async ({ page, dialogs }) => {
+  await page.clock.setFixedTime(new Date("2026-10-22T05:30:00-07:00"));
+  await start(page);
+  await renameShoe(page, "Shoe 1", "Clifton 11");
+  await expect.poll(async () => !!(await shoeByName(page, "Clifton 11"))).toBe(true);
+  const oldId = (await shoeByName(page, "Clifton 11")).id;
+  await page.locator("#defaultShoeSelect").selectOption({ label: "Clifton 11" });
+  await gotoTab(page, "Schedule");
+  await runRow(page, 22, "Quality").locator(".done-toggle").check();
+  await expect.poll(() => shoeMiles(page, "Clifton 11")).toBe(SEED.actual + TICKED_NO_ACTUAL_PLAN + 7);
+  const milesAtRetirement = await shoeMiles(page, "Clifton 11");
+
+  // Retire it.
+  await gotoTab(page, "Shoes");
+  await shoeCard(page, "Clifton 11").getByRole("button", { name: "Retire" }).click();
+  await expect(page.locator(".retired-heading")).toBeVisible();
+  await expect(page.locator(".shoe-card.retired")).toHaveCount(1);
+  await expect(page.locator(".shoe-card:not(.retired)")).toHaveCount(2);
+  await expect(page.locator(".shoe-card.retired")).toContainText("Clifton 11 (retired Oct 2026)");
+  await expect(page.locator("#defaultShoeSelect option", { hasText: "Clifton 11" })).toHaveCount(0);
+  await expect(page.locator("#defaultShoeSelect")).toHaveValue("");
+  expect((await db.cycles(page))[0].defaultShoeId).toBeNull();
+  expect(await shoeMiles(page, "Clifton 11")).toBe(milesAtRetirement); // miles kept
+
+  // History: ticked runs keep the retired shoe, shown with its date; upcoming runs are freed.
+  expect((await dbRun(page, 22, "Quality")).shoeId).toBe(oldId);
+  expect((await dbRun(page, 1, "Long")).shoeId).toBe(oldId);
+  expect((await dbRun(page, 22, "Easy")).shoeId).toBeNull();
+  await gotoTab(page, "Schedule");
+  await expect(selectedShoeText(runRow(page, 22, "Quality"))).toHaveText("Clifton 11 (retired Oct 2026)");
+  await expect(selectedShoeText(runRow(page, 22, "Easy"))).toHaveText("No shoe logged");
+  await expect(runRow(page, 22, "Easy").locator(".shoe-select option", { hasText: "retired" })).toHaveCount(0); // not offered for new runs
+
+  // A new pair can reuse the name, and becoming the default doesn't touch the retired pair's runs.
+  await renameShoe(page, "Shoe 2", "Clifton 11");
+  await expect(shoeCard(page, "Clifton 11").first()).toBeVisible();
+  await expect.poll(async () => (await db.shoes(page)).filter((x) => x.name === "Clifton 11").length).toBe(2);
+  const newId = (await db.shoes(page)).find((x) => x.name === "Clifton 11" && !x.retired).id;
+  await page.locator("#defaultShoeSelect").selectOption({ label: "Clifton 11" });
+  await expect.poll(async () => (await dbRun(page, 22, "Easy")).shoeId).toBe(newId);
+  expect((await dbRun(page, 22, "Quality")).shoeId).toBe(oldId);
+  expect((await dbRun(page, 1, "Long")).shoeId).toBe(oldId);
+
+  // Two active shoes can't share a name: rename is refused...
+  await renameShoe(page, "Shoe 3", " clifton 11 ");
+  await expect.poll(() => dialogs.seen.some((d) => d.type === "alert" && d.message.includes('already have an active shoe called "clifton 11"'))).toBe(true);
+  await expect(page.locator('input.shoe-name-input[value="Shoe 3"]')).toHaveCount(1);
+  expect((await db.shoes(page)).some((x) => x.name === "Shoe 3")).toBe(true);
+  // ...and adding one asks again.
+  dialogs.answer("Clifton 11", "Clifton 11 Blue");
+  await page.getByRole("button", { name: "+ Add a shoe" }).click();
+  await expect.poll(async () => (await db.shoes(page)).some((x) => x.name === "Clifton 11 Blue")).toBe(true);
+  expect(dialogs.seen.some((d) => d.type === "prompt" && d.message.includes("already have an active shoe"))).toBe(true);
+
+  // Un-retiring is refused while an active shoe has the same name...
+  await page.locator(".shoe-card.retired").getByRole("button", { name: "Un-retire" }).click();
+  await expect.poll(() => dialogs.seen.filter((d) => d.type === "alert" && d.message.includes("Rename one of them first")).length).toBe(1);
+  expect((await db.shoes(page)).find((x) => x.id === oldId).retired).toBe(true);
+  // ...and works once the names differ.
+  await renameShoe(page, "Clifton 11", "Clifton 11 Green"); // the active one (the retired card's box also says Clifton 11)
+  await expect.poll(async () => (await db.shoes(page)).find((x) => x.id === newId).name).toBe("Clifton 11 Green");
+  await page.locator(".shoe-card.retired").getByRole("button", { name: "Un-retire" }).click();
+  await expect.poll(async () => (await db.shoes(page)).find((x) => x.id === oldId).retired).toBe(false);
+  await expect(page.locator(".shoe-card.retired")).toHaveCount(0);
+  await gotoTab(page, "Schedule");
+  await expect(selectedShoeText(runRow(page, 22, "Quality"))).toHaveText("Clifton 11");
+});
+
+test("two retired pairs with the same name and month are told apart by full date", async ({ page }) => {
+  await page.clock.setFixedTime(new Date("2026-10-22T05:30:00-07:00"));
+  await start(page);
+  await renameShoe(page, "Shoe 1", "Clifton 11");
+  await expect.poll(async () => !!(await shoeByName(page, "Clifton 11"))).toBe(true);
+  await shoeCard(page, "Clifton 11").getByRole("button", { name: "Retire" }).click();
+  await expect(page.locator(".shoe-card.retired")).toHaveCount(1);
+  await renameShoe(page, "Shoe 2", "Clifton 11");
+  await expect.poll(async () => (await db.shoes(page)).filter((x) => x.name === "Clifton 11").length).toBe(2);
+  await page.locator(".shoe-card:not(.retired)", { has: page.locator('input.shoe-name-input[value="Clifton 11"]') }).getByRole("button", { name: "Retire" }).click();
+  await expect(page.locator(".shoe-card.retired")).toHaveCount(2);
+  await expect(page.locator(".shoe-card.retired").nth(0)).toContainText("Clifton 11 (retired Oct 22, 2026)");
+  await expect(page.locator(".shoe-card.retired").nth(1)).toContainText("Clifton 11 (retired Oct 22, 2026)");
+});
+
 test("a failed save shows a message that stays until dismissed", async ({ page, errors }) => {
   errors.allow = true; // the failed save is logged to the console on purpose
   await start(page);
@@ -553,6 +644,7 @@ const KNOWN_A11Y = {
 };
 
 test("accessibility: no new serious problems on any screen", async ({ page, errors }) => {
+  test.setTimeout(120000); // 11 full-page scans; slow when tests run in parallel
   errors.allow = true; // one scan deliberately shows the failed-save message
   const scan = async (label) => {
     const results = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze();
@@ -577,7 +669,9 @@ test("accessibility: no new serious problems on any screen", async ({ page, erro
   await page.getByRole("button", { name: "Manage cycles" }).click();
   problems.push(...(await scan("manage cycles")));
   await gotoTab(page, "Shoes");
-  problems.push(...(await scan("shoes")));
+  await shoeCard(page, "Shoe 3").getByRole("button", { name: "Retire" }).click();
+  await expect(page.locator(".shoe-card.retired")).toHaveCount(1);
+  problems.push(...(await scan("shoes (with a retired shoe)")));
   await gotoTab(page, "Reference");
   problems.push(...(await scan("reference")));
 
