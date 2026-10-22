@@ -4,6 +4,21 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Marathon Tracker</title>
+<!--
+  FIRESTORE SECURITY RULES (paste into Firebase console -> Firestore Database -> Rules):
+
+  rules_version = '2';
+  service cloud.firestore {
+    match /databases/{database}/documents {
+      match /users/{uid}/{document=**} {
+        allow read, write: if request.auth != null && request.auth.uid == uid;
+      }
+    }
+  }
+
+  This keeps every signed-in user's data (cycles, runs, shoes) visible only to them,
+  even though this site and its Firebase config are public.
+-->
 <style>
   :root {
     color-scheme: light;
@@ -56,6 +71,102 @@
 
   h1 { font-size: 22px; margin: 4px 0 2px; }
   .subtitle { color: var(--text-secondary); font-size: 14px; margin: 0 0 20px; }
+
+  /* ---- sign-in screen ---- */
+  .signin-screen {
+    max-width: 360px;
+    margin: 72px auto;
+    text-align: center;
+  }
+  .signin-btn {
+    font: inherit;
+    font-size: 14px;
+    font-weight: 600;
+    padding: 10px 18px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--accent);
+    color: #fff;
+    cursor: pointer;
+    margin-top: 12px;
+  }
+  .error-text {
+    color: var(--serious);
+    font-size: 13px;
+    margin-top: 10px;
+  }
+
+  /* ---- account + cycle bar ---- */
+  .account-bar {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 10px;
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-bottom: 4px;
+  }
+  .link-btn {
+    font: inherit;
+    font-size: 12px;
+    border: none;
+    background: none;
+    color: var(--accent);
+    cursor: pointer;
+    padding: 0;
+  }
+  .cycle-bar {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    margin: 4px 0 10px;
+    flex-wrap: wrap;
+  }
+  .cycle-bar select {
+    font: inherit;
+    font-size: 13px;
+    padding: 6px 8px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text-primary);
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 12px 14px;
+    margin-bottom: 16px;
+  }
+  .panel h3 { font-size: 13px; margin: 0 0 8px; color: var(--text-secondary); }
+  .panel h3:not(:first-child) { margin-top: 14px; }
+  .muted-note { font-size: 12px; color: var(--text-muted); margin: 0 0 8px; }
+
+  .cycle-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 0;
+    border-top: 1px solid var(--gridline);
+    flex-wrap: wrap;
+  }
+  .cycle-row:first-of-type { border-top: none; }
+  .cycle-row-main { display: flex; gap: 6px; flex-wrap: wrap; flex: 1 1 auto; min-width: 0; }
+  .cycle-row-main input {
+    font: inherit;
+    font-size: 13px;
+    padding: 5px 7px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--page);
+    color: var(--text-primary);
+  }
+  .cycle-name-input { flex: 1 1 140px; min-width: 0; }
+  .cycle-date-input { width: 132px; }
+  .cycle-row-actions { display: flex; gap: 6px; align-items: center; }
 
   /* ---- stat tiles ---- */
   .stats {
@@ -118,7 +229,7 @@
   input[type="file"] { display: none; }
   .edit-hint { font-size: 12px; color: var(--text-secondary); margin: -12px 0 16px; }
   /* `.controls{display:flex}` would otherwise beat the plain [hidden] rule */
-  .controls[hidden], .edit-hint[hidden] { display: none; }
+  .controls[hidden], .edit-hint[hidden], .panel[hidden], #appShell[hidden], #signedOutView[hidden], .error-text[hidden] { display: none; }
 
   /* ---- tabs ---- */
   .tabs { display: flex; gap: 6px; margin-bottom: 14px; border-bottom: 1px solid var(--gridline); }
@@ -174,6 +285,17 @@
   .run-desc .overdue {
     color: var(--serious);
     font-weight: 600;
+  }
+  .run-shoe { margin-top: 3px; }
+  .run-shoe select {
+    font: inherit;
+    font-size: 11px;
+    padding: 2px 4px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--page);
+    color: var(--text-secondary);
+    max-width: 150px;
   }
   .run-plan { font-size: 12px; color: var(--text-muted); text-align: right; white-space: nowrap; }
   .run-actual input {
@@ -241,6 +363,45 @@
   }
   .add-week-card button { border: none; padding: 10px; margin-top: 0; }
 
+  /* ---- shoes tab ---- */
+  .shoe-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 10px 12px;
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .shoe-name-input {
+    flex: 1 1 140px;
+    min-width: 0;
+    font: inherit;
+    font-size: 14px;
+    font-weight: 600;
+    padding: 5px 7px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--page);
+    color: var(--text-primary);
+  }
+  .shoe-miles { display: flex; align-items: center; gap: 4px; }
+  .shoe-miles-input {
+    width: 70px;
+    font: inherit;
+    font-size: 13px;
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+    padding: 5px 7px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--page);
+    color: var(--text-primary);
+  }
+  .shoe-miles-label { font-size: 12px; color: var(--text-secondary); }
+
   /* ---- reference tab ---- */
   .ref-card {
     background: var(--surface);
@@ -269,70 +430,136 @@
 </head>
 <body>
 
-<h1>Marathon Tracker</h1>
-<p class="subtitle">Goal pace 8:00&ndash;8:30/mi &middot; Race day Dec&nbsp;6, 2026</p>
+<div id="signedOutView" class="signin-screen">
+  <h1>Marathon Tracker</h1>
+  <p class="subtitle">Sign in with Google to see and edit your training plan. The same account shows the same plan on any device.</p>
+  <button id="signInBtn" class="signin-btn">Sign in with Google</button>
+  <p id="authError" class="error-text" hidden></p>
+</div>
 
-<div class="stats" id="stats"></div>
+<div id="appShell" hidden>
 
-<div class="overall-meter">
-  <div class="meter-caption">
-    <span id="overallCaption">&nbsp;</span>
-    <span id="overallPct">&nbsp;</span>
+  <div class="account-bar">
+    <span id="userEmail"></span>
+    <button id="signOutBtn" class="link-btn">Sign out</button>
   </div>
-  <div class="meter-track"><div class="meter-fill" id="overallFill" style="width:0%"></div></div>
-</div>
 
-<div class="controls">
-  <button id="editModeBtn">Edit plan</button>
-  <button id="exportBtn">Export backup</button>
-  <label class="file-btn" for="importFile">Import backup</label>
-  <input type="file" id="importFile" accept="application/json">
-</div>
-<div class="controls" id="editControls" hidden>
-  <button id="resetBtn" class="danger">Reset to this app's starting plan</button>
-  <button id="newBlockBtn" class="danger">Start a new, blank training block</button>
-</div>
-<p class="edit-hint" id="editHint" hidden>Editing the plan &mdash; change any field by clicking it, add or delete runs and weeks below.</p>
+  <h1>Marathon Tracker</h1>
+  <p class="subtitle">Goal pace 8:00&ndash;8:30/mi</p>
 
-<div class="tabs">
-  <button class="tab-btn active" data-tab="schedule">Schedule</button>
-  <button class="tab-btn" data-tab="reference">Reference</button>
-</div>
-
-<div class="tab-panel active" id="tab-schedule"></div>
-
-<div class="tab-panel" id="tab-reference">
-  <div class="ref-card">
-    <h3>Pace zones (goal MP 8:00&ndash;8:30)</h3>
-    <table class="ref-table">
-      <tr><th>Zone</th><th>Pace /mi</th><th>Feel</th></tr>
-      <tr><td>Recovery / Easy</td><td>9:15</td><td>Conversational, almost too slow</td></tr>
-      <tr><td>Long run</td><td>9:00</td><td>Relaxed; not near race pace</td></tr>
-      <tr><td>Marathon pace</td><td>8:00&ndash;8:30</td><td>Goal effort; controlled</td></tr>
-      <tr><td>Tempo / Threshold</td><td>7:40</td><td>Comfortably hard</td></tr>
-    </table>
+  <div class="cycle-bar">
+    <select id="cycleSelect" aria-label="Training cycle"></select>
+    <button id="manageCyclesBtn">Manage cycles</button>
   </div>
-  <div class="ref-card">
-    <h3>Heart rate (max 175 &middot; rest 60)</h3>
-    <table class="ref-table">
-      <tr><td>Recovery</td><td>118&ndash;129 bpm</td></tr>
-      <tr><td>Easy / long</td><td>129&ndash;141 bpm</td></tr>
-      <tr><td>Marathon (8:00)</td><td>147&ndash;155 bpm</td></tr>
-      <tr><td>Tempo</td><td>152&ndash;161 bpm</td></tr>
-    </table>
-    <p class="ref-note">Easy/long days: cap HR ~140, let pace follow (&le;133 recovery). Current HR steers; average HR grades.</p>
+  <div class="panel" id="manageCyclesPanel" hidden></div>
+
+  <p id="dataError" class="error-text" hidden></p>
+
+  <div class="stats" id="stats"></div>
+
+  <div class="overall-meter">
+    <div class="meter-caption">
+      <span id="overallCaption">&nbsp;</span>
+      <span id="overallPct">&nbsp;</span>
+    </div>
+    <div class="meter-track"><div class="meter-fill" id="overallFill" style="width:0%"></div></div>
   </div>
+
+  <div class="controls">
+    <button id="editModeBtn">Edit plan</button>
+    <button id="exportBtn">Export this cycle</button>
+    <label class="file-btn" for="importFile">Import into this cycle</label>
+    <input type="file" id="importFile" accept="application/json">
+  </div>
+  <p class="edit-hint" id="editHint" hidden>Editing the plan &mdash; change any field by clicking it, add or delete runs and weeks below.</p>
+
+  <div class="tabs">
+    <button class="tab-btn active" data-tab="schedule">Schedule</button>
+    <button class="tab-btn" data-tab="shoes">Shoes</button>
+    <button class="tab-btn" data-tab="reference">Reference</button>
+  </div>
+
+  <div class="tab-panel active" id="tab-schedule"></div>
+
+  <div class="tab-panel" id="tab-shoes"></div>
+
+  <div class="tab-panel" id="tab-reference">
+    <div class="ref-card">
+      <h3>Pace zones (goal MP 8:00&ndash;8:30)</h3>
+      <table class="ref-table">
+        <tr><th>Zone</th><th>Pace /mi</th><th>Feel</th></tr>
+        <tr><td>Recovery / Easy</td><td>9:15</td><td>Conversational, almost too slow</td></tr>
+        <tr><td>Long run</td><td>9:00</td><td>Relaxed; not near race pace</td></tr>
+        <tr><td>Marathon pace</td><td>8:00&ndash;8:30</td><td>Goal effort; controlled</td></tr>
+        <tr><td>Tempo / Threshold</td><td>7:40</td><td>Comfortably hard</td></tr>
+      </table>
+    </div>
+    <div class="ref-card">
+      <h3>Heart rate (max 175 &middot; rest 60)</h3>
+      <table class="ref-table">
+        <tr><td>Recovery</td><td>118&ndash;129 bpm</td></tr>
+        <tr><td>Easy / long</td><td>129&ndash;141 bpm</td></tr>
+        <tr><td>Marathon (8:00)</td><td>147&ndash;155 bpm</td></tr>
+        <tr><td>Tempo</td><td>152&ndash;161 bpm</td></tr>
+      </table>
+      <p class="ref-note">Easy/long days: cap HR ~140, let pace follow (&le;133 recovery). Current HR steers; average HR grades.</p>
+    </div>
+  </div>
+
+  <footer>Synced to your Google account &middot; sign in with the same account on another device to see the same plan</footer>
 </div>
 
-<footer>Stored privately in this browser only &middot; export a backup before switching devices</footer>
-
-<script>
+<script type="module">
 /* ============================================================
-   DATA
+   FIREBASE SETUP
+   Paste the config object Firebase gave you when you registered
+   a web app (Project settings -> Your apps) in place of the
+   placeholder values below. These values are not secret -- they
+   just tell the browser which Firebase project to talk to. What
+   actually protects your data is the Firestore security rules
+   (see the HTML comment at the top of this file) plus requiring
+   sign-in.
+   ============================================================ */
+import { initializeApp } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-app.js";
+import {
+  getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged,
+} from "https://www.gstatic.com/firebasejs/13.0.0/firebase-auth.js";
+import {
+  getFirestore, collection, doc, addDoc, updateDoc, deleteDoc, getDocs,
+  onSnapshot, writeBatch, increment, serverTimestamp,
+} from "https://www.gstatic.com/firebasejs/13.0.0/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyDgBJ_zFRf6nZY03GHUIIg9udkJAp_IytU",
+  authDomain: "marathon-training-3fb9e.firebaseapp.com",
+  projectId: "marathon-training-3fb9e",
+  storageBucket: "marathon-training-3fb9e.firebasestorage.app",
+  messagingSenderId: "34394055412",
+  appId: "1:34394055412:web:47f75ff0a82695aedab4a1",
+};
+
+if (firebaseConfig.apiKey === "PASTE_YOUR_FIREBASE_CONFIG_HERE") {
+  document.body.innerHTML = `
+    <div style="font:16px/1.5 system-ui,sans-serif;max-width:420px;margin:60px auto;text-align:center;">
+      <h2>Almost there</h2>
+      <p>This app needs its Firebase config pasted into <code>index.html</code>
+      (look for <code>firebaseConfig</code> near the top of the script) before it
+      can sign you in or store anything.</p>
+    </div>`;
+  throw new Error("Firebase not configured yet -- see the message on the page.");
+}
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+const googleProvider = new GoogleAuthProvider();
+
+/* ============================================================
+   SEED DATA
+   Only used once, the very first time a brand-new account signs
+   in with zero training cycles -- it becomes that account's first
+   cycle so the real plan isn't lost in the move to Firebase.
    Seeded from the training Google Sheet on 2026-10-19.
-   Each run is one object. `plan` is the sheet's "out" + "Plan mi"
-   columns; `actual` / `done` are null/false until the sheet said
-   otherwise at seed time, then take over from local storage.
    ============================================================ */
 const SEED_PLAN = [
   // week 1
@@ -444,90 +671,369 @@ const SEED_PLAN = [
 
 /* ============================================================
    STATE
-   The WHOLE plan (not just checkmarks) lives in localStorage, so
-   it can be edited in place and carried into future training
-   blocks. SEED_PLAN above is only the starting point: the first
-   time the app runs on a browser, it's copied into local storage
-   and given stable ids; from then on local storage is the source
-   of truth, and SEED_PLAN is only used again if you hit "Reset".
+   Firestore is now the only source of truth. Shape, per account
+   (uid):
+     users/{uid}/cycles/{cycleId}                      -- {name, raceDate, status: "active"|"archived", createdAt}
+     users/{uid}/cycles/{cycleId}/runs/{runId}          -- {week, date, session, desc, plan, actual, done, shoeId, shoeMilesApplied}
+     users/{uid}/shoes/{shoeId}                         -- {name, miles, createdAt}
+   `plan`, `cycles` and `shoes` below are always just the latest
+   snapshot from Firestore -- never written to directly, only read.
    ============================================================ */
-const STORAGE_KEY = "marathon-tracker-v2";
-let nextId = 1;
-
-function freshIdFromSeed() {
-  return "seed-" + (nextId++);
-}
-
-function seedPlan() {
-  nextId = 1;
-  return SEED_PLAN.map(row => ({ ...row, id: freshIdFromSeed() }));
-}
-
-function loadPlan() {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length >= 0) return parsed;
-    }
-  } catch (e) {
-    console.warn("Could not read saved plan, starting from the published one:", e);
-  }
-  const fresh = seedPlan();
-  savePlan(fresh);
-  return fresh;
-}
-
-function savePlan(p) {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(p));
-  } catch (e) {
-    console.warn("Could not save the plan:", e);
-  }
-}
-
-let plan = loadPlan();
+let currentUser = null;
+let cycles = [];
+let shoes = [];
+let plan = [];
+let activeCycleId = null;
+let subscribedRunsCycleId = undefined; // sentinel so the very first subscribe always runs
 let editMode = false;
 
+let unsubCycles = null;
+let unsubRuns = null;
+let unsubShoes = null;
+
+function escapeHtml(s) {
+  return String(s ?? "").replace(/[&<>"']/g, (c) => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+  }[c]));
+}
+
 function findRow(id) {
-  return plan.find(r => r.id === id);
+  return plan.find((r) => r.id === id);
 }
 
-function updateRow(id, patch) {
-  const row = findRow(id);
-  if (!row) return;
-  Object.assign(row, patch);
-  savePlan(plan);
+function activeCycleRecord() {
+  return cycles.find((c) => c.id === activeCycleId) || null;
 }
 
-function deleteRun(id) {
-  plan = plan.filter(r => r.id !== id);
-  savePlan(plan);
-  renderAll();
+function showDataError(msg) {
+  const el = document.getElementById("dataError");
+  el.textContent = msg;
+  el.hidden = false;
+}
+function clearDataError() {
+  document.getElementById("dataError").hidden = true;
 }
 
-function addRun(week, afterDate) {
-  plan.push({
-    week, date: afterDate || "", session: "", desc: "",
-    plan: 0, actual: null, done: false,
-    id: "new-" + Date.now() + "-" + Math.random().toString(36).slice(2, 6),
+/* ============================================================
+   FIRESTORE: ONE-TIME MIGRATION FOR A BRAND NEW ACCOUNT
+   ============================================================ */
+async function ensureInitialCycle(uid) {
+  const cyclesCol = collection(db, "users", uid, "cycles");
+  const snap = await getDocs(cyclesCol);
+  if (!snap.empty) return;
+
+  const cycleRef = await addDoc(cyclesCol, {
+    name: "Fall 2026 Marathon",
+    raceDate: "2026-12-06",
+    status: "active",
+    createdAt: serverTimestamp(),
   });
-  savePlan(plan);
-  renderAll();
+  const runsCol = collection(db, "users", uid, "cycles", cycleRef.id, "runs");
+  const batch = writeBatch(db);
+  SEED_PLAN.forEach((row) => {
+    const runRef = doc(runsCol);
+    batch.set(runRef, { ...row, shoeId: null, shoeMilesApplied: 0 });
+  });
+  await batch.commit();
 }
 
-function addWeek() {
+async function ensureInitialShoes(uid) {
+  const shoesCol = collection(db, "users", uid, "shoes");
+  const snap = await getDocs(shoesCol);
+  if (!snap.empty) return;
+
+  const batch = writeBatch(db);
+  ["Shoe 1", "Shoe 2", "Shoe 3"].forEach((name) => {
+    const ref = doc(shoesCol);
+    batch.set(ref, { name, miles: 0, createdAt: serverTimestamp() });
+  });
+  await batch.commit();
+}
+
+/* ============================================================
+   FIRESTORE: CYCLES
+   ============================================================ */
+function subscribeToCycles() {
+  const col = collection(db, "users", currentUser.uid, "cycles");
+  unsubCycles = onSnapshot(
+    col,
+    (snap) => {
+      cycles = snap.docs
+        .map((d) => ({ id: d.id, ...d.data() }))
+        .sort((a, b) => (a.createdAt?.toMillis?.() || 0) - (b.createdAt?.toMillis?.() || 0));
+
+      const activeCycles = cycles.filter((c) => c.status !== "archived");
+      if (!activeCycleId || !activeCycles.find((c) => c.id === activeCycleId)) {
+        activeCycleId = activeCycles[0] ? activeCycles[0].id : null;
+        try {
+          localStorage.setItem("marathon-active-cycle-" + currentUser.uid, activeCycleId || "");
+        } catch (e) { /* ignore */ }
+      }
+      if (activeCycleId !== subscribedRunsCycleId) {
+        subscribedRunsCycleId = activeCycleId;
+        subscribeToRuns();
+      }
+      clearDataError();
+      renderCycleBar();
+      renderManageCycles();
+    },
+    (err) => {
+      console.error(err);
+      showDataError("Couldn't load your training cycles: " + err.message);
+    }
+  );
+}
+
+async function createCycle() {
+  const name = window.prompt("Name for the new training cycle?", "");
+  if (name === null) return;
+  const raceDate = window.prompt("Race date (YYYY-MM-DD)? Leave blank to fill in later.", "") || "";
+  const ref = await addDoc(collection(db, "users", currentUser.uid, "cycles"), {
+    name: name || "New cycle",
+    raceDate,
+    status: "active",
+    createdAt: serverTimestamp(),
+  });
+  activeCycleId = ref.id;
+  try { localStorage.setItem("marathon-active-cycle-" + currentUser.uid, ref.id); } catch (e) {}
+  subscribedRunsCycleId = ref.id;
+  subscribeToRuns();
+}
+
+async function renameCycle(id, patch) {
+  await updateDoc(doc(db, "users", currentUser.uid, "cycles", id), patch);
+}
+
+async function archiveCycle(id) {
+  if (!confirm("Archive this cycle? You can restore it later from Manage cycles.")) return;
+  await updateDoc(doc(db, "users", currentUser.uid, "cycles", id), { status: "archived" });
+}
+
+async function restoreCycle(id) {
+  await updateDoc(doc(db, "users", currentUser.uid, "cycles", id), { status: "active" });
+  activeCycleId = id;
+  try { localStorage.setItem("marathon-active-cycle-" + currentUser.uid, id); } catch (e) {}
+  subscribedRunsCycleId = id;
+  subscribeToRuns();
+}
+
+async function deleteCycleForever(id) {
+  if (!confirm("Permanently delete this cycle and every run in it? This cannot be undone.")) return;
+  const runsCol = collection(db, "users", currentUser.uid, "cycles", id, "runs");
+  const runsSnap = await getDocs(runsCol);
+  const batch = writeBatch(db);
+  runsSnap.docs.forEach((d) => {
+    const r = d.data();
+    if (r.shoeId && r.shoeMilesApplied) {
+      batch.update(doc(db, "users", currentUser.uid, "shoes", r.shoeId), { miles: increment(-r.shoeMilesApplied) });
+    }
+    batch.delete(d.ref);
+  });
+  batch.delete(doc(db, "users", currentUser.uid, "cycles", id));
+  await batch.commit();
+}
+
+/* ============================================================
+   FIRESTORE: RUNS (the active cycle's schedule)
+   ============================================================ */
+function subscribeToRuns() {
+  if (unsubRuns) { unsubRuns(); unsubRuns = null; }
+  if (!activeCycleId) { plan = []; renderAll(); return; }
+  const col = collection(db, "users", currentUser.uid, "cycles", activeCycleId, "runs");
+  unsubRuns = onSnapshot(
+    col,
+    (snap) => {
+      plan = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      clearDataError();
+      renderAll();
+    },
+    (err) => {
+      console.error(err);
+      showDataError("Couldn't load this cycle's runs: " + err.message);
+    }
+  );
+}
+
+// Writing a run's `actual` miles or `shoeId` also keeps the assigned shoe's
+// running total correct -- it un-applies whatever this run previously
+// contributed to a shoe, then applies what it contributes now, as one
+// atomic batch so the shoe total can never drift out of sync.
+async function updateRow(id, patch) {
+  const run = findRow(id);
+  if (!run || !currentUser || !activeCycleId) return;
+  const runRef = doc(db, "users", currentUser.uid, "cycles", activeCycleId, "runs", id);
+
+  const touchesShoeMath = "actual" in patch || "shoeId" in patch;
+  if (!touchesShoeMath) {
+    await updateDoc(runRef, patch);
+    return;
+  }
+
+  const newActual = "actual" in patch ? patch.actual : run.actual;
+  const newShoeId = "shoeId" in patch ? patch.shoeId : run.shoeId || null;
+  const oldShoeId = run.shoeId || null;
+  const oldApplied = run.shoeMilesApplied || 0;
+  const newApplied = newShoeId ? Number(newActual) || 0 : 0;
+
+  const batch = writeBatch(db);
+  if (oldShoeId === newShoeId) {
+    const delta = newApplied - oldApplied;
+    if (oldShoeId && delta !== 0) {
+      batch.update(doc(db, "users", currentUser.uid, "shoes", oldShoeId), { miles: increment(delta) });
+    }
+  } else {
+    if (oldShoeId && oldApplied) {
+      batch.update(doc(db, "users", currentUser.uid, "shoes", oldShoeId), { miles: increment(-oldApplied) });
+    }
+    if (newShoeId && newApplied) {
+      batch.update(doc(db, "users", currentUser.uid, "shoes", newShoeId), { miles: increment(newApplied) });
+    }
+  }
+  batch.update(runRef, { ...patch, shoeMilesApplied: newApplied });
+  await batch.commit();
+}
+
+async function deleteRun(id) {
+  const run = findRow(id);
+  if (!run || !currentUser || !activeCycleId) return;
+  const runRef = doc(db, "users", currentUser.uid, "cycles", activeCycleId, "runs", id);
+  const batch = writeBatch(db);
+  if (run.shoeId && run.shoeMilesApplied) {
+    batch.update(doc(db, "users", currentUser.uid, "shoes", run.shoeId), { miles: increment(-run.shoeMilesApplied) });
+  }
+  batch.delete(runRef);
+  await batch.commit();
+}
+
+async function addRun(week, afterDate) {
+  if (!currentUser || !activeCycleId) return;
+  const runsCol = collection(db, "users", currentUser.uid, "cycles", activeCycleId, "runs");
+  await addDoc(runsCol, {
+    week, date: afterDate || "", session: "", desc: "",
+    plan: 0, actual: null, done: false, shoeId: null, shoeMilesApplied: 0,
+  });
+}
+
+async function addWeek() {
   const maxWeek = plan.reduce((m, r) => Math.max(m, r.week), 0);
   const weekStr = window.prompt("New week number?", String(maxWeek + 1));
   if (weekStr === null) return;
   const week = Number(weekStr);
   if (!Number.isFinite(week)) { alert("That's not a number."); return; }
   const dateStr = window.prompt("Week-ending date (YYYY-MM-DD)? Leave blank to fill in later.", "") || "";
-  addRun(week, dateStr);
+  await addRun(week, dateStr);
 }
 
 /* ============================================================
-   RENDER
+   FIRESTORE: SHOES
+   ============================================================ */
+function subscribeToShoes() {
+  const col = collection(db, "users", currentUser.uid, "shoes");
+  unsubShoes = onSnapshot(
+    col,
+    (snap) => {
+      shoes = snap.docs
+        .map((d) => ({ id: d.id, ...d.data() }))
+        .sort((a, b) => (a.createdAt?.toMillis?.() || 0) - (b.createdAt?.toMillis?.() || 0));
+      renderShoes();
+      renderSchedule(); // each run row's shoe dropdown needs the current shoe list
+    },
+    (err) => {
+      console.error(err);
+      showDataError("Couldn't load your shoes: " + err.message);
+    }
+  );
+}
+
+async function addShoe() {
+  const name = window.prompt("Shoe name?", "New shoe");
+  if (name === null) return;
+  await addDoc(collection(db, "users", currentUser.uid, "shoes"), {
+    name: name || "New shoe", miles: 0, createdAt: serverTimestamp(),
+  });
+}
+
+async function updateShoe(id, patch) {
+  await updateDoc(doc(db, "users", currentUser.uid, "shoes", id), patch);
+}
+
+async function deleteShoe(id) {
+  if (!confirm("Delete this shoe? Runs already tagged with it keep their logged miles, they'll just show as unassigned.")) return;
+  await deleteDoc(doc(db, "users", currentUser.uid, "shoes", id));
+}
+
+/* ============================================================
+   RENDER: top-level chrome (account bar, cycle bar, cycle manager)
+   ============================================================ */
+function renderCycleBar() {
+  const select = document.getElementById("cycleSelect");
+  const activeCycles = cycles.filter((c) => c.status !== "archived");
+  select.innerHTML = activeCycles.length
+    ? activeCycles.map((c) => `<option value="${c.id}" ${c.id === activeCycleId ? "selected" : ""}>${escapeHtml(c.name || "Untitled cycle")}</option>`).join("")
+    : `<option value="">No cycles yet</option>`;
+}
+
+function renderManageCycles() {
+  const panel = document.getElementById("manageCyclesPanel");
+  if (panel.hidden) return; // no need to build markup while it's closed
+  const activeCycles = cycles.filter((c) => c.status !== "archived");
+  const archivedCycles = cycles.filter((c) => c.status === "archived");
+
+  const cycleRow = (c) => `
+    <div class="cycle-row">
+      <div class="cycle-row-main">
+        <input class="cycle-name-input" data-id="${c.id}" data-field="name" value="${escapeHtml(c.name || "")}" placeholder="Cycle name">
+        <input class="cycle-date-input" type="date" data-id="${c.id}" data-field="raceDate" value="${c.raceDate || ""}" aria-label="Race date">
+      </div>
+      <div class="cycle-row-actions">
+        ${c.status === "archived"
+          ? `<button data-action="restore" data-id="${c.id}">Restore</button>`
+          : `<button data-action="archive" data-id="${c.id}">Archive</button>`}
+        <button data-action="delete" data-id="${c.id}" class="delete-run-btn" title="Delete forever" aria-label="Delete this cycle forever">&times;</button>
+      </div>
+    </div>`;
+
+  panel.innerHTML = `
+    <h3>Active cycles</h3>
+    ${activeCycles.length ? activeCycles.map(cycleRow).join("") : '<p class="muted-note">None yet.</p>'}
+    <button id="newCycleBtn" class="add-run-btn">+ New cycle</button>
+    ${archivedCycles.length ? `<h3>Archived</h3>${archivedCycles.map(cycleRow).join("")}` : ""}
+  `;
+
+  panel.querySelectorAll(".cycle-name-input, .cycle-date-input").forEach((el) => {
+    el.addEventListener("change", (e) => {
+      renameCycle(e.target.dataset.id, { [e.target.dataset.field]: e.target.value });
+    });
+  });
+  panel.querySelectorAll("button[data-action]").forEach((el) => {
+    el.addEventListener("click", (e) => {
+      const id = e.target.dataset.id;
+      const action = e.target.dataset.action;
+      if (action === "archive") archiveCycle(id);
+      if (action === "restore") restoreCycle(id);
+      if (action === "delete") deleteCycleForever(id);
+    });
+  });
+  const newBtn = document.getElementById("newCycleBtn");
+  if (newBtn) newBtn.addEventListener("click", createCycle);
+}
+
+document.getElementById("cycleSelect").addEventListener("change", (e) => {
+  const id = e.target.value;
+  activeCycleId = id || null;
+  try { localStorage.setItem("marathon-active-cycle-" + currentUser.uid, activeCycleId || ""); } catch (err) {}
+  subscribedRunsCycleId = activeCycleId;
+  subscribeToRuns();
+});
+
+document.getElementById("manageCyclesBtn").addEventListener("click", () => {
+  const panel = document.getElementById("manageCyclesPanel");
+  panel.hidden = !panel.hidden;
+  if (!panel.hidden) renderManageCycles();
+});
+
+/* ============================================================
+   RENDER: schedule tab (mostly unchanged from the localStorage version)
    ============================================================ */
 function todayISOFn() { return new Date().toISOString().slice(0, 10); }
 const todayISO = todayISOFn();
@@ -547,7 +1053,7 @@ function fmtWeekEndDate(dateStr) {
 function renderStats() {
   const rows = plan;
   const totalRuns = rows.length;
-  const doneRuns = rows.filter(r => r.done).length;
+  const doneRuns = rows.filter((r) => r.done).length;
   const pctDone = totalRuns ? Math.round((doneRuns / totalRuns) * 100) : 0;
   const plannedMi = rows.reduce((s, r) => s + r.plan, 0);
   const actualMi = rows.reduce((s, r) => s + (r.actual || 0), 0);
@@ -576,28 +1082,28 @@ function renderStats() {
 
 function renderSchedule() {
   const weeks = {};
-  plan.forEach(r => {
+  plan.forEach((r) => {
     if (!weeks[r.week]) weeks[r.week] = [];
     weeks[r.week].push(r);
   });
 
   const weekKeys = Object.keys(weeks).sort((a, b) => a - b);
 
-  const html = weekKeys.map(wk => {
+  const html = weekKeys.map((wk) => {
     const weekRows = weeks[wk];
     const planTotal = weekRows.reduce((s, r) => s + (r.plan || 0), 0);
     const actualTotal = weekRows.reduce((s, r) => s + (r.actual || 0), 0);
     const pct = planTotal ? Math.min(100, Math.round((actualTotal / planTotal) * 100)) : 0;
 
-    const rowsHtml = weekRows.map(r => {
+    const rowsHtml = weekRows.map((r) => {
       if (editMode) {
         return `
           <div class="run-row editing">
             <div class="edit-fields">
               <input class="f-session" aria-label="Session" placeholder="Session"
-                     value="${r.session}" data-id="${r.id}" data-field="session">
+                     value="${escapeHtml(r.session)}" data-id="${r.id}" data-field="session">
               <input class="f-desc" aria-label="Description" placeholder="Description"
-                     value="${r.desc}" data-id="${r.id}" data-field="desc">
+                     value="${escapeHtml(r.desc)}" data-id="${r.id}" data-field="desc">
               <input class="f-plan" aria-label="Plan miles" type="number" min="0" step="0.1"
                      value="${r.plan}" data-id="${r.id}" data-field="plan">
               <input class="f-date" aria-label="Date" type="date"
@@ -609,15 +1115,23 @@ function renderSchedule() {
       }
       const isOverdue = !r.done && r.date && r.date < todayISO;
       const descHtml = isOverdue
-        ? `${r.desc} <span class="overdue">&middot; past due</span>`
-        : r.desc;
+        ? `${escapeHtml(r.desc)} <span class="overdue">&middot; past due</span>`
+        : escapeHtml(r.desc);
+      const shoeHtml = shoes.length ? `
+        <div class="run-shoe">
+          <select class="shoe-select" data-id="${r.id}" aria-label="Shoe for this run">
+            <option value="">No shoe logged</option>
+            ${shoes.map((s) => `<option value="${s.id}" ${r.shoeId === s.id ? "selected" : ""}>${escapeHtml(s.name || "Shoe")}</option>`).join("")}
+          </select>
+        </div>` : "";
       return `
         <div class="run-row ${r.done ? "done" : ""}">
           <input type="checkbox" ${r.done ? "checked" : ""}
                  data-id="${r.id}" class="done-toggle">
           <div class="run-info">
-            <div class="run-session">${r.session || "(untitled)"}</div>
+            <div class="run-session">${escapeHtml(r.session) || "(untitled)"}</div>
             <div class="run-desc">${descHtml}</div>
+            ${shoeHtml}
           </div>
           <div class="run-plan">${fmtMi(r.plan)} plan</div>
           <div class="run-actual">
@@ -651,20 +1165,19 @@ function renderSchedule() {
     ? `<div class="add-week-card"><button id="addWeekBtn">+ Add a new week</button></div>`
     : "";
 
-  document.getElementById("tab-schedule").innerHTML = html + addWeekHtml;
+  document.getElementById("tab-schedule").innerHTML = (html || '<p class="muted-note">No runs in this cycle yet.</p>') + addWeekHtml;
 
   if (editMode) {
-    document.querySelectorAll(".edit-fields input").forEach(el => {
+    document.querySelectorAll(".edit-fields input").forEach((el) => {
       el.addEventListener("change", (e) => {
         const id = e.target.dataset.id;
         const field = e.target.dataset.field;
         let val = e.target.value;
         if (field === "plan") val = Number(val) || 0;
         updateRow(id, { [field]: val });
-        renderAll();
       });
     });
-    document.querySelectorAll(".delete-run-btn").forEach(el => {
+    document.querySelectorAll(".delete-run-btn").forEach((el) => {
       el.addEventListener("click", (e) => {
         const id = e.target.dataset.id;
         const row = findRow(id);
@@ -672,7 +1185,7 @@ function renderSchedule() {
         deleteRun(id);
       });
     });
-    document.querySelectorAll(".add-run-btn").forEach(el => {
+    document.querySelectorAll(".add-run-btn").forEach((el) => {
       el.addEventListener("click", (e) => {
         addRun(Number(e.target.dataset.week), e.target.dataset.date);
       });
@@ -680,13 +1193,12 @@ function renderSchedule() {
     const addWeekBtn = document.getElementById("addWeekBtn");
     if (addWeekBtn) addWeekBtn.addEventListener("click", addWeek);
   } else {
-    document.querySelectorAll(".done-toggle").forEach(el => {
+    document.querySelectorAll(".done-toggle").forEach((el) => {
       el.addEventListener("change", (e) => {
         updateRow(e.target.dataset.id, { done: e.target.checked });
-        renderAll();
       });
     });
-    document.querySelectorAll(".actual-input").forEach(el => {
+    document.querySelectorAll(".actual-input").forEach((el) => {
       el.addEventListener("change", (e) => {
         const raw = e.target.value.trim();
         const val = raw === "" ? null : Number(raw);
@@ -695,7 +1207,11 @@ function renderSchedule() {
         // it, since you might just be fixing a typo.
         if (patch.actual !== null) patch.done = true;
         updateRow(e.target.dataset.id, patch);
-        renderAll();
+      });
+    });
+    document.querySelectorAll(".shoe-select").forEach((el) => {
+      el.addEventListener("change", (e) => {
+        updateRow(e.target.dataset.id, { shoeId: e.target.value || null });
       });
     });
   }
@@ -706,42 +1222,77 @@ function renderAll() {
   renderSchedule();
 }
 
-renderAll();
+/* ============================================================
+   RENDER: shoes tab
+   ============================================================ */
+function renderShoes() {
+  const panel = document.getElementById("tab-shoes");
+  const rows = shoes.map((s) => `
+    <div class="shoe-card">
+      <input class="shoe-name-input" data-id="${s.id}" data-field="name" value="${escapeHtml(s.name || "")}" placeholder="Shoe name">
+      <div class="shoe-miles">
+        <input class="shoe-miles-input" type="number" min="0" step="0.1" data-id="${s.id}" value="${s.miles ?? 0}" aria-label="Miles on this shoe">
+        <span class="shoe-miles-label">mi</span>
+      </div>
+      <button class="delete-run-btn" data-id="${s.id}" title="Delete this shoe" aria-label="Delete this shoe">&times;</button>
+    </div>
+  `).join("");
+
+  panel.innerHTML = `
+    ${rows || '<p class="muted-note">No shoes yet.</p>'}
+    <button id="addShoeBtn" class="add-run-btn">+ Add a shoe</button>
+    <p class="ref-note">Pick a shoe under any logged run and its miles add up here automatically. You can also type a number directly into a shoe's mileage — for miles from before you started tracking, or to fix a mistake.</p>
+  `;
+
+  panel.querySelectorAll(".shoe-name-input").forEach((el) => {
+    el.addEventListener("change", (e) => updateShoe(e.target.dataset.id, { name: e.target.value }));
+  });
+  panel.querySelectorAll(".shoe-miles-input").forEach((el) => {
+    el.addEventListener("change", (e) => {
+      const val = Number(e.target.value);
+      updateShoe(e.target.dataset.id, { miles: isNaN(val) ? 0 : val });
+    });
+  });
+  panel.querySelectorAll(".shoe-card .delete-run-btn").forEach((el) => {
+    el.addEventListener("click", (e) => deleteShoe(e.target.dataset.id));
+  });
+  const addBtn = document.getElementById("addShoeBtn");
+  if (addBtn) addBtn.addEventListener("click", addShoe);
+}
 
 /* ============================================================
    TABS
    ============================================================ */
-document.querySelectorAll(".tab-btn").forEach(btn => {
+document.querySelectorAll(".tab-btn").forEach((btn) => {
   btn.addEventListener("click", () => {
-    document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
-    document.querySelectorAll(".tab-panel").forEach(p => p.classList.remove("active"));
+    document.querySelectorAll(".tab-btn").forEach((b) => b.classList.remove("active"));
+    document.querySelectorAll(".tab-panel").forEach((p) => p.classList.remove("active"));
     btn.classList.add("active");
     document.getElementById("tab-" + btn.dataset.tab).classList.add("active");
   });
 });
 
 /* ============================================================
-   EDIT MODE
+   EDIT MODE (purely local UI state -- not stored anywhere)
    ============================================================ */
 document.getElementById("editModeBtn").addEventListener("click", (e) => {
   editMode = !editMode;
   e.target.classList.toggle("active", editMode);
   e.target.textContent = editMode ? "Done editing" : "Edit plan";
-  document.getElementById("editControls").hidden = !editMode;
+  document.getElementById("editControls") && (document.getElementById("editControls").hidden = !editMode);
   document.getElementById("editHint").hidden = !editMode;
-  renderAll();
+  renderSchedule();
 });
 
 /* ============================================================
-   EXPORT / IMPORT / RESET
-   Export writes the whole plan, structure included, so a backup
-   is self-contained and doubles as a way to carry your plan to
-   another browser by hand.
+   EXPORT / IMPORT (scoped to the active cycle)
    ============================================================ */
 document.getElementById("exportBtn").addEventListener("click", () => {
+  const cycle = activeCycleRecord();
   const data = {
     exportedAt: new Date().toISOString(),
-    rows: plan.map(r => ({
+    cycleName: cycle ? cycle.name : "",
+    rows: plan.map((r) => ({
       week: r.week, date: r.date, session: r.session,
       desc: r.desc, plan: r.plan, actual: r.actual, done: r.done,
     })),
@@ -760,26 +1311,43 @@ document.getElementById("exportBtn").addEventListener("click", () => {
 document.getElementById("importFile").addEventListener("change", (e) => {
   const file = e.target.files[0];
   if (!file) return;
+  if (!activeCycleId) { alert("Pick or create a training cycle first."); e.target.value = ""; return; }
   const reader = new FileReader();
-  reader.onload = () => {
+  reader.onload = async () => {
     try {
       const data = JSON.parse(reader.result);
       if (!Array.isArray(data.rows)) throw new Error("Unexpected file format");
-      if (!confirm(`Import ${data.rows.length} runs and replace everything currently in the app?`)) return;
-      nextId = 1;
-      plan = data.rows.map(row => ({
-        week: Number(row.week) || 0,
-        date: row.date || "",
-        session: row.session || "",
-        desc: row.desc || "",
-        plan: Number(row.plan) || 0,
-        actual: row.actual === null || row.actual === undefined ? null : Number(row.actual),
-        done: !!row.done,
-        id: freshIdFromSeed(),
-      }));
-      savePlan(plan);
-      renderAll();
-      alert("Backup imported.");
+      const cycle = activeCycleRecord();
+      if (!confirm(`Import ${data.rows.length} runs, replacing everything currently in "${cycle ? cycle.name : "this cycle"}"?`)) return;
+
+      const runsCol = collection(db, "users", currentUser.uid, "cycles", activeCycleId, "runs");
+      const existing = await getDocs(runsCol);
+      // Firestore batches cap out at 500 writes -- comfortably above what
+      // one training cycle holds, so no chunking needed here.
+      const batch = writeBatch(db);
+      existing.docs.forEach((d) => {
+        const r = d.data();
+        if (r.shoeId && r.shoeMilesApplied) {
+          batch.update(doc(db, "users", currentUser.uid, "shoes", r.shoeId), { miles: increment(-r.shoeMilesApplied) });
+        }
+        batch.delete(d.ref);
+      });
+      data.rows.forEach((row) => {
+        const ref = doc(runsCol);
+        batch.set(ref, {
+          week: Number(row.week) || 0,
+          date: row.date || "",
+          session: row.session || "",
+          desc: row.desc || "",
+          plan: Number(row.plan) || 0,
+          actual: row.actual === null || row.actual === undefined ? null : Number(row.actual),
+          done: !!row.done,
+          shoeId: null,
+          shoeMilesApplied: 0,
+        });
+      });
+      await batch.commit();
+      alert("Import complete.");
     } catch (err) {
       alert("Could not read that file as a tracker backup: " + err.message);
     }
@@ -788,18 +1356,54 @@ document.getElementById("importFile").addEventListener("change", (e) => {
   e.target.value = "";
 });
 
-document.getElementById("resetBtn").addEventListener("click", () => {
-  if (!confirm("Reset everything back to the plan this app shipped with -- all your edits, checkmarks and logged miles will be lost. Export a backup first if you want to keep them.")) return;
-  plan = seedPlan();
-  savePlan(plan);
-  renderAll();
+/* ============================================================
+   AUTH
+   ============================================================ */
+document.getElementById("signInBtn").addEventListener("click", () => {
+  document.getElementById("authError").hidden = true;
+  signInWithPopup(auth, googleProvider).catch((err) => {
+    console.error(err);
+    const el = document.getElementById("authError");
+    el.textContent = "Sign-in failed: " + err.message;
+    el.hidden = false;
+  });
 });
 
-document.getElementById("newBlockBtn").addEventListener("click", () => {
-  if (!confirm("Clear every week and run to start a blank plan for your next training block? This can't be undone -- export a backup first if you want to keep the current plan.")) return;
-  plan = [];
-  savePlan(plan);
-  renderAll();
+document.getElementById("signOutBtn").addEventListener("click", () => signOut(auth));
+
+onAuthStateChanged(auth, async (user) => {
+  if (unsubCycles) { unsubCycles(); unsubCycles = null; }
+  if (unsubRuns) { unsubRuns(); unsubRuns = null; }
+  if (unsubShoes) { unsubShoes(); unsubShoes = null; }
+  subscribedRunsCycleId = undefined;
+
+  currentUser = user;
+
+  if (!user) {
+    document.getElementById("appShell").hidden = true;
+    document.getElementById("signedOutView").hidden = false;
+    cycles = []; shoes = []; plan = []; activeCycleId = null;
+    return;
+  }
+
+  document.getElementById("signedOutView").hidden = true;
+  document.getElementById("appShell").hidden = false;
+  document.getElementById("userEmail").textContent = user.email || user.displayName || "Signed in";
+
+  try {
+    await ensureInitialCycle(user.uid);
+    await ensureInitialShoes(user.uid);
+  } catch (e) {
+    console.error("First-time setup failed:", e);
+    showDataError("Couldn't set up your account's data: " + e.message);
+  }
+
+  try {
+    activeCycleId = localStorage.getItem("marathon-active-cycle-" + user.uid) || null;
+  } catch (e) { activeCycleId = null; }
+
+  subscribeToCycles();
+  subscribeToShoes();
 });
 </script>
 </body>
