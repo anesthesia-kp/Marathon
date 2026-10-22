@@ -27,6 +27,8 @@ Durable decisions about how this app is built, in roughly chronological order. A
 - 3 shoes tracked, each with a running mileage total kept in sync atomically with run edits/deletions/reassignments via Firestore batched writes (`increment()`).
 - A default shoe can be set and is auto-applied to runs — but a `shoeAuto` flag distinguishes "auto-assigned by default" from "deliberately chosen by the user (including deliberately choosing none)," so changing the default shoe never silently overwrites a manual choice.
 
+- **Shoe totals: the app counts, with "Edit total" set points (2026-10-22, user's design).** Each shoe shows its total and an Edit total button. A saved total is a set point: the app records what every one of the shoe's runs (all cycles, archived included) counts at that moment, then only later ticks/unticks move the total. Replaces the always-editable mileage box, whose hand-typed totals were double-counted by later ticks.
+- **What a run counts toward its shoe (2026-10-22):** ticked → its actual miles, or its planned miles if the actual box is empty (ticked = ran it); unticked → 0. So changing `done` or `plan` can move a shoe total too. The "Actual miles logged" tile is unchanged — it counts only the actual box, like the Sheet.
 - **Deleting a shoe never rewrites history** (2026-10-21, user's call). Runs logged with a deleted shoe keep the tag (dropdown shows "Deleted shoe") and their miles; changing the default shoe never moves them onto the new default; and editing them still saves (all shoe-total bookkeeping goes through `addShoeDelta`/`applyShoeDeltas`, which skip shoes that no longer exist — before this, any edit to such a run failed silently because Firestore rejects updates to a deleted document).
 
 ## Run styles

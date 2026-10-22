@@ -504,9 +504,15 @@
     background: var(--page);
     color: var(--text-primary);
   }
-  .shoe-miles { display: flex; align-items: center; gap: 4px; }
-  .shoe-miles-input {
-    width: 70px;
+  .shoe-total { display: flex; align-items: center; gap: 6px; }
+  .shoe-total-value {
+    font-size: 15px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .shoe-total-input {
+    width: 80px;
     font: inherit;
     font-size: 14px;
     font-variant-numeric: tabular-nums;
@@ -517,7 +523,13 @@
     background: var(--page);
     color: var(--text-primary);
   }
-  .shoe-miles-label { font-size: 13px; color: var(--text-secondary); }
+  .shoe-total-input[aria-invalid="true"] { border-color: var(--error-text); }
+  .shoe-total-label { font-size: 13px; color: var(--text-secondary); }
+  .shoe-setpoint {
+    flex: 1 1 100%;
+    font-size: 12px;
+    color: var(--text-secondary);
+  }
   .default-shoe-row {
     display: flex;
     align-items: center;
@@ -860,6 +872,7 @@ let activeCycleId = null;
 let subscribedRunsCycleId = undefined; // sentinel so the very first subscribe always runs
 let editMode = false;
 let expandedCompletedWeeks = new Set(); // which collapsed completed-week rows are open, this session only
+let editingShoeTotalId = null; // the shoe whose "Edit total" box is open, if any (this screen only)
 
 let unsubCycles = null;
 let unsubRuns = null;
@@ -945,6 +958,16 @@ function weekEndDate(weekRows) {
    batch as the run change. A shoe that no longer exists is skipped:
    writing to a deleted shoe makes Firestore reject the whole batch,
    which is what used to make edits to such runs silently not save. */
+// Miles a run counts toward its shoe. A ticked run counts its actual miles --
+// or its planned miles if no actual was entered (ticked means you ran it).
+// An unticked run counts nothing.
+function runShoeMiles(run) {
+  if (!run.done) return 0;
+  const actual = run.actual;
+  if (actual !== null && actual !== undefined && actual !== "") return Number(actual) || 0;
+  return Number(run.plan) || 0;
+}
+
 function shoeStillExists(shoeId) {
   if (!shoeId) return false;
   if (!shoesLoaded) return true; // shoe list not loaded yet -- can't tell, so assume it does
@@ -1169,19 +1192,18 @@ async function updateRow(id, patch) {
   if (!run || !currentUser || !activeCycleId) return;
   const runRef = doc(db, "users", currentUser.uid, "cycles", activeCycleId, "runs", id);
 
-  const touchesShoeMath = "actual" in patch || "shoeId" in patch;
+  const touchesShoeMath = "actual" in patch || "shoeId" in patch || "done" in patch || "plan" in patch;
   if (!touchesShoeMath) {
     await updateDoc(runRef, patch);
     return;
   }
 
-  const newActual = "actual" in patch ? patch.actual : run.actual;
   const newShoeId = "shoeId" in patch ? patch.shoeId || null : run.shoeId || null;
   const oldShoeId = run.shoeId || null;
   const oldApplied = run.shoeMilesApplied || 0;
   // Miles only count toward a shoe that still exists. A run tagged with a
   // deleted shoe keeps its tag; there's just no total left to update.
-  const newApplied = shoeStillExists(newShoeId) ? Number(newActual) || 0 : 0;
+  const newApplied = shoeStillExists(newShoeId) ? runShoeMiles({ ...run, ...patch }) : 0;
 
   const batch = writeBatch(db);
   const deltas = {};
@@ -1260,6 +1282,38 @@ async function updateShoe(id, patch) {
   await updateDoc(doc(db, "users", currentUser.uid, "shoes", id), patch);
 }
 
+// "Edit total": the number typed becomes the shoe's total as of right now,
+// already covering every run it counts at this moment. Each of the shoe's
+// runs (in every cycle, archived ones included) has what it counts *now*
+// recorded as its contribution, so from here on only changes move the
+// total: ticking a run that wasn't ticked adds its miles, unticking one
+// that was ticked takes them back off. The shoe's own update goes in the
+// final batch, so "total saved" always means the snapshot is complete.
+async function setShoeTotal(shoeId, total) {
+  const uid = currentUser.uid;
+  const writes = [];
+  for (const c of cycles) {
+    const snap = await getDocs(collection(db, "users", uid, "cycles", c.id, "runs"));
+    snap.docs.forEach((d) => {
+      const r = d.data();
+      if (r.shoeId !== shoeId) return;
+      const counts = runShoeMiles(r);
+      if ((r.shoeMilesApplied || 0) !== counts) {
+        writes.push((b) => b.update(d.ref, { shoeMilesApplied: counts }));
+      }
+    });
+  }
+  writes.push((b) => b.update(doc(db, "users", uid, "shoes", shoeId), {
+    miles: total, totalSetTo: total, totalSetAt: serverTimestamp(),
+  }));
+  const CHUNK = 450; // Firestore allows at most 500 writes per batch
+  for (let i = 0; i < writes.length; i += CHUNK) {
+    const batch = writeBatch(db);
+    writes.slice(i, i + CHUNK).forEach((write) => write(batch));
+    await batch.commit();
+  }
+}
+
 // Deleting a shoe removes only the shoe. Runs tagged with it keep that tag
 // and their logged miles -- history isn't rewritten. (Edits to those runs
 // still save: the bookkeeping helpers skip shoes that no longer exist.)
@@ -1294,7 +1348,7 @@ async function applyDefaultShoeToUnsetRuns(shoeId) {
   const deltas = {};
   eligible.forEach((r) => {
     const runRef = doc(db, "users", currentUser.uid, "cycles", activeCycleId, "runs", r.id);
-    const newApplied = shoeId ? (Number(r.actual) || 0) : 0;
+    const newApplied = shoeId ? runShoeMiles(r) : 0;
     addShoeDelta(deltas, r.shoeId || null, -(r.shoeMilesApplied || 0));
     addShoeDelta(deltas, shoeId, newApplied);
     batch.update(runRef, { shoeId: shoeId || null, shoeMilesApplied: newApplied, shoeAuto: true });
@@ -1734,18 +1788,48 @@ function renderAll() {
 /* ============================================================
    RENDER: shoes tab
    ============================================================ */
+// "Set to 169 mi on Oct 22 · +7 since" -- the last total typed in, and how
+// much ticking/unticking has moved it since.
+function shoeSetPointText(s) {
+  if (s.totalSetTo === undefined || s.totalSetTo === null) return "";
+  const when = s.totalSetAt && s.totalSetAt.toDate
+    ? "on " + s.totalSetAt.toDate().toLocaleDateString(undefined, { month: "short", day: "numeric" })
+    : "just now";
+  const diff = round1((Number(s.miles) || 0) - Number(s.totalSetTo));
+  const change = diff > 0 ? `+${diff} mi since` : diff < 0 ? `\u2212${-diff} mi since` : "no change since";
+  return `Set to ${round1(s.totalSetTo)} mi ${when} &middot; ${change}`;
+}
+
 function renderShoes() {
   const panel = document.getElementById("tab-shoes");
-  const rows = shoes.map((s) => `
+  // Keep a half-typed total if the screen refreshes while the box is open.
+  const draftInput = panel.querySelector(".shoe-total-input");
+  const draft = draftInput ? draftInput.value : null;
+  if (editingShoeTotalId && !shoes.some((s) => s.id === editingShoeTotalId)) editingShoeTotalId = null;
+
+  const rows = shoes.map((s) => {
+    const editing = s.id === editingShoeTotalId;
+    const totalHtml = editing ? `
+      <div class="shoe-total">
+        <input class="shoe-total-input" type="number" inputmode="decimal" min="0" step="0.1" data-id="${s.id}"
+               value="${escapeHtml(draft !== null ? draft : String(round1(s.miles)))}" aria-label="New total miles for ${escapeHtml(s.name || "this shoe")}">
+        <span class="shoe-total-label">mi</span>
+        <button class="shoe-save-btn" data-id="${s.id}" type="button">Save</button>
+        <button class="shoe-cancel-btn" type="button">Cancel</button>
+      </div>` : `
+      <div class="shoe-total">
+        <span class="shoe-total-value">${round1(s.miles)} mi</span>
+        <button class="shoe-edit-btn" data-id="${s.id}" type="button" aria-label="Edit total for ${escapeHtml(s.name || "this shoe")}">Edit total</button>
+      </div>`;
+    const setPoint = shoeSetPointText(s);
+    return `
     <div class="shoe-card">
-      <input class="shoe-name-input" data-id="${s.id}" data-field="name" value="${escapeHtml(s.name || "")}" placeholder="Shoe name">
-      <div class="shoe-miles">
-        <input class="shoe-miles-input" type="number" min="0" step="0.1" data-id="${s.id}" value="${round1(s.miles)}" aria-label="Miles on this shoe">
-        <span class="shoe-miles-label">mi</span>
-      </div>
+      <input class="shoe-name-input" data-id="${s.id}" data-field="name" value="${escapeHtml(s.name || "")}" placeholder="Shoe name" aria-label="Shoe name">
+      ${totalHtml}
       <button class="delete-run-btn" data-id="${s.id}" title="Delete this shoe" aria-label="Delete this shoe">&times;</button>
-    </div>
-  `).join("");
+      ${setPoint ? `<div class="shoe-setpoint">${setPoint}</div>` : ""}
+    </div>`;
+  }).join("");
 
   const cycle = activeCycleRecord();
   const defaultShoeId = cycle ? (cycle.defaultShoeId || "") : "";
@@ -1762,7 +1846,7 @@ function renderShoes() {
     ${defaultRowHtml}
     ${rows || '<p class="muted-note">No shoes yet.</p>'}
     <button id="addShoeBtn" class="add-run-btn">+ Add a shoe</button>
-    <p class="ref-note">Pick a shoe under any logged run and its miles add up here automatically. The default shoe above is applied to every run you haven't manually assigned a different shoe to. You can also type a number directly into a shoe's mileage — for miles from before you started tracking, or to fix a mistake.</p>
+    <p class="ref-note">Ticked runs add their miles to the shoe they're tagged with (the actual miles, or the planned miles if you didn't enter any); unticking takes them back off. The default shoe above is applied to every run you haven't manually assigned a different shoe to. Use <strong>Edit total</strong> to enter a shoe's real mileage: from then on, only runs you tick or untick after that change it.</p>
   `;
 
   const defSel = document.getElementById("defaultShoeSelect");
@@ -1771,10 +1855,35 @@ function renderShoes() {
   panel.querySelectorAll(".shoe-name-input").forEach((el) => {
     el.addEventListener("change", (e) => updateShoe(e.target.dataset.id, { name: e.target.value }));
   });
-  panel.querySelectorAll(".shoe-miles-input").forEach((el) => {
-    el.addEventListener("change", (e) => {
-      const val = Number(e.target.value);
-      updateShoe(e.target.dataset.id, { miles: isNaN(val) ? 0 : val });
+  panel.querySelectorAll(".shoe-edit-btn").forEach((el) => {
+    el.addEventListener("click", (e) => {
+      editingShoeTotalId = e.currentTarget.dataset.id;
+      renderShoes();
+      const input = panel.querySelector(".shoe-total-input");
+      if (input) { input.focus(); input.select(); }
+    });
+  });
+  const saveTotal = async (shoeId) => {
+    const input = panel.querySelector(".shoe-total-input");
+    const raw = input ? input.value.trim() : "";
+    const val = Number(raw);
+    if (raw === "" || !Number.isFinite(val) || val < 0) {
+      if (input) { input.setAttribute("aria-invalid", "true"); input.focus(); }
+      return;
+    }
+    editingShoeTotalId = null;
+    renderShoes();
+    await setShoeTotal(shoeId, round1(val));
+  };
+  const cancelTotal = () => { editingShoeTotalId = null; renderShoes(); };
+  panel.querySelectorAll(".shoe-save-btn").forEach((el) => {
+    el.addEventListener("click", (e) => saveTotal(e.currentTarget.dataset.id));
+  });
+  panel.querySelectorAll(".shoe-cancel-btn").forEach((el) => el.addEventListener("click", cancelTotal));
+  panel.querySelectorAll(".shoe-total-input").forEach((el) => {
+    el.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") { e.preventDefault(); saveTotal(e.target.dataset.id); }
+      if (e.key === "Escape") { e.preventDefault(); cancelTotal(); }
     });
   });
   panel.querySelectorAll(".shoe-card .delete-run-btn").forEach((el) => {

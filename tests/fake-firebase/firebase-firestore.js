@@ -14,6 +14,7 @@
 class Timestamp {
   constructor(ms) { this.ms = ms; }
   toMillis() { return this.ms; }
+  toDate() { return new Date(this.ms); }
 }
 class IncrementSentinel {
   constructor(n) { this.n = n; }

@@ -17,6 +17,9 @@ const UID = "test-user";
 
 // Seed plan facts (weeks 1-28, from the Google Sheet).
 const SEED = { runs: 77, done: 56, planned: 672, actual: 362 };
+// Seed runs in weeks 19-21 that are ticked but have no actual miles (they count
+// their planned miles toward a shoe): 18 + 19 + 7 + 10 + 13 + 6 + 6.
+const TICKED_NO_ACTUAL_PLAN = 79;
 
 /* ---------------- fixtures ---------------- */
 
@@ -200,7 +203,7 @@ test("mile totals show at most one decimal", async ({ page }) => {
   await expect(tile(page, "Actual miles logged")).toHaveText(String(SEED.actual + 0.3));
   await expect(tile(page, "Miles remaining")).toHaveText(String(Math.round((SEED.planned - SEED.actual - 0.3) * 10) / 10));
   await gotoTab(page, "Shoes");
-  await expect(page.locator(".shoe-card").first().locator(".shoe-miles-input")).toHaveValue("0.3");
+  await expect(page.locator(".shoe-card").first().locator(".shoe-total-value")).toHaveText("0.3 mi");
 });
 
 test("shoe miles follow every run edit", async ({ page, dialogs }) => {
@@ -238,12 +241,12 @@ test("deleting a shoe keeps run history, and those runs can still be edited", as
   // Default shoe tags every run, including all past ones.
   await gotoTab(page, "Shoes");
   await page.locator("#defaultShoeSelect").selectOption({ label: "Shoe 1" });
-  await expect.poll(() => shoeMiles(page, "Shoe 1")).toBe(SEED.actual);
+  await expect.poll(() => shoeMiles(page, "Shoe 1")).toBe(SEED.actual + TICKED_NO_ACTUAL_PLAN);
   const shoe1Id = (await shoeByName(page, "Shoe 1")).id;
 
   await gotoTab(page, "Schedule");
   await runRow(page, 22, "Quality").locator(".done-toggle").check();
-  await expect.poll(() => shoeMiles(page, "Shoe 1")).toBe(SEED.actual + 7);
+  await expect.poll(() => shoeMiles(page, "Shoe 1")).toBe(SEED.actual + TICKED_NO_ACTUAL_PLAN + 7);
 
   // Delete Shoe 1.
   await gotoTab(page, "Shoes");
@@ -272,6 +275,125 @@ test("deleting a shoe keeps run history, and those runs can still be edited", as
   await expect.poll(async () => (await db.cycles(page))[0].defaultShoeId).toBe((await shoeByName(page, "Shoe 2")).id);
   expect(await shoeMiles(page, "Shoe 2")).toBe(0);
   expect((await dbRun(page, 1, "Long")).shoeId).toBe(shoe1Id);
+});
+
+const shoeCard = (page, name) => page.locator(".shoe-card", { has: page.locator(`input.shoe-name-input[value="${name}"]`) });
+const completedRow = (page, week, session) =>
+  page.locator(".week-row-compact", { has: page.locator(`.wrc-head[data-week="${week}"]`) })
+    .locator(".run-row", { has: page.locator(".run-session", { hasText: new RegExp(`^[\\d.]+ mi ${session}$`) }) });
+
+async function editShoeTotal(page, name, value, { submit = "save" } = {}) {
+  await gotoTab(page, "Shoes");
+  await shoeCard(page, name).getByRole("button", { name: /Edit total/ }).click();
+  const input = shoeCard(page, name).locator(".shoe-total-input");
+  await expect(input).toBeFocused();
+  await input.fill(String(value));
+  if (submit === "enter") await input.press("Enter");
+  else if (submit === "save") await shoeCard(page, name).getByRole("button", { name: "Save" }).click();
+  return input;
+}
+
+test("Edit total sets a starting point; later ticks and unticks add or subtract from it", async ({ page }) => {
+  await start(page);
+  await gotoTab(page, "Shoes");
+  await page.locator("#defaultShoeSelect").selectOption({ label: "Shoe 1" });
+  // Ticked runs count actual miles, or planned miles when no actual was entered.
+  await expect.poll(() => shoeMiles(page, "Shoe 1")).toBe(SEED.actual + TICKED_NO_ACTUAL_PLAN);
+
+  await editShoeTotal(page, "Shoe 1", 169);
+  await expect.poll(() => shoeMiles(page, "Shoe 1")).toBe(169);
+  await expect(shoeCard(page, "Shoe 1").locator(".shoe-total-value")).toHaveText("169 mi");
+  await expect(shoeCard(page, "Shoe 1").locator(".shoe-setpoint")).toContainText("Set to 169 mi");
+  await expect(shoeCard(page, "Shoe 1").locator(".shoe-setpoint")).toContainText("no change since");
+  expect((await shoeByName(page, "Shoe 1")).totalSetTo).toBe(169);
+
+  // Tonight's real case: a run that was ticked (with no actual) when the total
+  // was set gets unticked and re-ticked -- the total must end where it started.
+  await gotoTab(page, "Schedule");
+  await page.locator('.wrc-head[data-week="21"]').click();
+  await completedRow(page, 21, "Long").locator(".done-toggle").click(); // unticking moves week 21 out of the completed column
+  await expect.poll(() => shoeMiles(page, "Shoe 1")).toBe(169 - 13);
+  // Week 21 is the current week again now; re-ticking completes it, so the app
+  // moves it back to the completed column (click, then check the saved result).
+  await runRow(page, 21, "Long").locator(".done-toggle").click();
+  await expect.poll(() => shoeMiles(page, "Shoe 1")).toBe(169);
+  await expect(page.locator(".week-card.current-week .week-title")).toContainText("Week 22");
+  expect((await dbRun(page, 21, "Long")).actual).toBe(13);
+
+  // A run that was NOT ticked when the total was set adds its miles when ticked.
+  await runRow(page, 22, "Quality").locator(".done-toggle").check();
+  await expect.poll(() => shoeMiles(page, "Shoe 1")).toBe(176);
+  await gotoTab(page, "Shoes");
+  await expect(shoeCard(page, "Shoe 1").locator(".shoe-total-value")).toHaveText("176 mi");
+  await expect(shoeCard(page, "Shoe 1").locator(".shoe-setpoint")).toContainText("+7 mi since");
+
+  // A new total (saved with Enter) includes that run, so unticking it subtracts.
+  await editShoeTotal(page, "Shoe 1", 200, { submit: "enter" });
+  await expect.poll(() => shoeMiles(page, "Shoe 1")).toBe(200);
+  await gotoTab(page, "Schedule");
+  await runRow(page, 22, "Quality").locator(".done-toggle").uncheck();
+  await expect.poll(() => shoeMiles(page, "Shoe 1")).toBe(193);
+
+  // Cancel, Escape and an empty value all leave the total alone.
+  await editShoeTotal(page, "Shoe 1", 999, { submit: "none" });
+  await shoeCard(page, "Shoe 1").getByRole("button", { name: "Cancel" }).click();
+  await expect(shoeCard(page, "Shoe 1").locator(".shoe-total-value")).toHaveText("193 mi");
+  const input = await editShoeTotal(page, "Shoe 1", "", { submit: "save" });
+  await expect(input).toHaveAttribute("aria-invalid", "true");
+  await input.press("Escape");
+  await expect(shoeCard(page, "Shoe 1").locator(".shoe-total-value")).toHaveText("193 mi");
+  expect(await shoeMiles(page, "Shoe 1")).toBe(193);
+
+  // Changing the planned miles of a ticked run with no actual moves the shoe too.
+  await gotoTab(page, "Schedule");
+  await page.getByRole("button", { name: "Edit plan" }).click();
+  const plan20 = weekCard(page, 20).locator('input.f-plan[value="19"]');
+  await plan20.fill("20");
+  await plan20.press("Tab");
+  await expect.poll(() => shoeMiles(page, "Shoe 1")).toBe(194);
+  await page.getByRole("button", { name: "Done editing" }).click();
+
+  // Clearing the actual on a ticked run falls back to its planned miles.
+  await runRow(page, 22, "Easy").locator(".done-toggle").check();
+  await expect.poll(() => shoeMiles(page, "Shoe 1")).toBe(205);
+  await setActual(runRow(page, 22, "Easy"), 12);
+  await expect.poll(() => shoeMiles(page, "Shoe 1")).toBe(206);
+  const easyActual = runRow(page, 22, "Easy").locator(".actual-input");
+  await easyActual.fill("");
+  await easyActual.press("Tab");
+  await expect.poll(async () => (await dbRun(page, 22, "Easy")).actual).toBeNull();
+  await expect.poll(() => shoeMiles(page, "Shoe 1")).toBe(205);
+});
+
+test("Edit total also covers runs in archived cycles", async ({ page, dialogs }) => {
+  await start(page);
+  await page.getByRole("button", { name: "Manage cycles" }).click();
+  dialogs.answer("Spring 2027", "2027-04-01");
+  await page.getByRole("button", { name: "+ New cycle" }).click();
+  await expect(page.locator("#cycleSelect option:checked")).toHaveText("Spring 2027");
+  await page.getByRole("button", { name: "Edit plan" }).click();
+  dialogs.answer("1", "2027-01-03");
+  await page.getByRole("button", { name: "+ Add a new week" }).click();
+  const planInput = weekCard(page, 1).locator("input.f-plan");
+  await planInput.fill("5");
+  await planInput.press("Tab");
+  await page.getByRole("button", { name: "Done editing" }).click();
+  const row = page.locator(".week-card.current-week .run-row");
+  await row.locator(".shoe-select").selectOption({ label: "Shoe 2" });
+  await row.locator(".done-toggle").check();
+  await expect.poll(() => shoeMiles(page, "Shoe 2")).toBe(5);
+
+  const springRow = page.locator(".cycle-row", { has: page.locator('input.cycle-name-input[value="Spring 2027"]') });
+  await springRow.getByRole("button", { name: "Archive" }).click();
+  await expect(page.locator("#cycleSelect option:checked")).toHaveText("Fall 2026 Marathon");
+  await editShoeTotal(page, "Shoe 2", 300); // the archived run is ticked -> included in 300
+  await expect.poll(() => shoeMiles(page, "Shoe 2")).toBe(300);
+
+  await springRow.getByRole("button", { name: "Restore" }).click();
+  await expect(page.locator("#cycleSelect option:checked")).toHaveText("Spring 2027");
+  await gotoTab(page, "Schedule");
+  await page.locator(".week-card.current-week .run-row .done-toggle").uncheck();
+  await expect.poll(() => shoeMiles(page, "Shoe 2")).toBe(295);
 });
 
 test("a failed save shows a message that stays until dismissed", async ({ page, errors }) => {
