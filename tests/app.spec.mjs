@@ -1,0 +1,454 @@
+// Behavioral tests for index.html. Firebase is swapped for the in-memory fake
+// in ./fake-firebase, so nothing here ever touches real data.
+//
+// Run:  cd tests && npm install && npx playwright test
+// Run against another copy of the app:  APP_FILE=/path/to/index.html npx playwright test
+import { test as base, expect } from "@playwright/test";
+import AxeBuilder from "@axe-core/playwright";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const HERE = path.dirname(fileURLToPath(import.meta.url));
+const APP_FILE = process.env.APP_FILE ? path.resolve(process.env.APP_FILE) : path.resolve(HERE, "..", "index.html");
+const FAKE_DIR = path.join(HERE, "fake-firebase");
+const APP_URL = "http://marathon.test/";
+const UID = "test-user";
+
+// Seed plan facts (weeks 1-28, from the Google Sheet).
+const SEED = { runs: 77, done: 56, planned: 672, actual: 362 };
+
+/* ---------------- fixtures ---------------- */
+
+const test = base.extend({
+  // Answers for prompt()/confirm() dialogs, in order. Unqueued confirms are accepted.
+  dialogs: [async ({ page }, use) => {
+    const answers = [];
+    const seen = [];
+    page.on("dialog", async (d) => {
+      seen.push({ type: d.type(), message: d.message() });
+      const a = answers.length ? answers.shift() : undefined;
+      if (d.type() === "prompt") {
+        if (a === null) await d.dismiss();
+        else await d.accept(a === undefined ? d.defaultValue() : String(a));
+      } else if (a === false) {
+        await d.dismiss();
+      } else {
+        await d.accept();
+      }
+    });
+    await use({ answer: (...xs) => answers.push(...xs), seen });
+  }, { auto: true }],
+  // Fails any test that produces a page error or console error, unless the test opts out.
+  errors: [
+    async ({ page }, use) => {
+      const list = [];
+      page.on("pageerror", (e) => list.push("pageerror: " + e.message));
+      page.on("console", (m) => m.type() === "error" && list.push("console: " + m.text()));
+      const errors = { list, allow: false };
+      await use(errors);
+      if (!errors.allow) expect(list, "unexpected errors in the page").toEqual([]);
+    },
+    { auto: true },
+  ],
+});
+
+async function openApp(page) {
+  await page.route("**/*", (route) => route.abort()); // nothing may reach the real network
+  await page.route("https://www.gstatic.com/firebasejs/13.0.0/*", (route) => {
+    const file = path.join(FAKE_DIR, route.request().url().split("/").pop());
+    route.fulfill({ path: file, contentType: "text/javascript", headers: { "access-control-allow-origin": "*" } });
+  });
+  await page.route(APP_URL, (route) => route.fulfill({ path: APP_FILE, contentType: "text/html" }));
+  await page.goto(APP_URL);
+  await expect(page.locator("#signedOutView")).toBeVisible();
+}
+
+async function signIn(page) {
+  await page.getByRole("button", { name: "Sign in with Google" }).click();
+  await expect(page.locator(".week-card.current-week")).toBeVisible();
+}
+
+async function start(page) {
+  await openApp(page);
+  await signIn(page);
+}
+
+/* ---------------- helpers ---------------- */
+
+const weekCard = (page, week) =>
+  page.locator(".week-card", { has: page.locator(".week-title", { hasText: new RegExp(`^Week ${week}(?!\\d)`) }) });
+
+const runRow = (page, week, session) =>
+  weekCard(page, week).locator(".run-row", { has: page.locator(".run-session", { hasText: new RegExp(`^${session}$`) }) });
+
+const tile = (page, label) =>
+  page.locator(".stat-tile", { has: page.locator(".stat-label", { hasText: label }) }).locator(".stat-value");
+
+async function gotoTab(page, name) {
+  await page.locator(".tab-btn", { hasText: name }).click();
+}
+
+async function setActual(row, value) {
+  const input = row.locator(".actual-input");
+  await input.fill(String(value));
+  await input.press("Tab");
+}
+
+// Database reads (through the fake).
+const db = {
+  cycles: (page) => page.evaluate((uid) => window.__fakeFirestore.list(`users/${uid}/cycles`), UID),
+  shoes: (page) => page.evaluate((uid) => window.__fakeFirestore.list(`users/${uid}/shoes`), UID),
+  settings: (page) => page.evaluate((uid) => window.__fakeFirestore.list(`users/${uid}/settings`)[0], UID),
+  runs: (page, cycleId) =>
+    page.evaluate(({ uid, cycleId }) => window.__fakeFirestore.list(`users/${uid}/cycles/${cycleId}/runs`), { uid: UID, cycleId }),
+};
+async function firstCycleId(page) {
+  const cycles = await db.cycles(page);
+  return cycles.find((c) => c.name === "Fall 2026 Marathon").id;
+}
+async function dbRun(page, week, session) {
+  const runs = await db.runs(page, await firstCycleId(page));
+  return runs.find((r) => r.week === week && r.session === session);
+}
+async function shoeByName(page, name) {
+  return (await db.shoes(page)).find((s) => s.name === name);
+}
+const shoeMiles = async (page, name) => Math.round(((await shoeByName(page, name))?.miles ?? NaN) * 1000) / 1000;
+
+/* ---------------- tests ---------------- */
+
+test("signing in shows the seeded plan; signing out hides it", async ({ page }) => {
+  await openApp(page);
+  await expect(page.locator("#appShell")).toBeHidden();
+  await signIn(page);
+  await expect(page.locator("#userEmail")).toHaveText("runner@example.com");
+  await expect(tile(page, "Runs completed")).toHaveText(`${SEED.done} / ${SEED.runs}`);
+  await expect(tile(page, "Planned miles")).toHaveText(String(SEED.planned));
+  await expect(tile(page, "Actual miles logged")).toHaveText(String(SEED.actual));
+  await expect(tile(page, "Miles remaining")).toHaveText(String(SEED.planned - SEED.actual));
+  await expect(page.locator("#overallCaption")).toHaveText(`${SEED.actual} mi of ${SEED.planned} mi logged`);
+  expect((await db.shoes(page)).map((s) => s.name).sort()).toEqual(["Shoe 1", "Shoe 2", "Shoe 3"]);
+
+  await page.getByRole("button", { name: "Sign out" }).click();
+  await expect(page.locator("#signedOutView")).toBeVisible();
+  await expect(page.locator("#appShell")).toBeHidden();
+});
+
+test("runs inside a week are in date order, and 'week ending' is the latest date", async ({ page }) => {
+  await start(page);
+  const current = page.locator(".week-card.current-week");
+  await expect(current.locator(".week-title")).toContainText("Week 22");
+  await expect(current.locator(".run-session")).toHaveText(["Quality", "Easy", "Long"]);
+  await expect(current.locator(".week-sub")).toContainText("week ending Oct 25");
+
+  // Move week 23's long run to the start of the week; order and end date follow.
+  await page.getByRole("button", { name: "Edit plan" }).click();
+  const longDate = weekCard(page, 23).locator('input.f-date[value="2026-11-01"]');
+  await longDate.fill("2026-10-26"); // fill() fires the change event, which saves
+  await expect.poll(async () => (await dbRun(page, 23, "Long")).date).toBe("2026-10-26");
+  await page.getByRole("button", { name: "Done editing" }).click();
+  await expect(weekCard(page, 23).locator(".run-session")).toHaveText(["Long", "Quality", "Easy"]);
+  await expect(weekCard(page, 23).locator(".week-sub")).toContainText("week ending Oct 29");
+});
+
+test("mile totals show at most one decimal", async ({ page }) => {
+  await start(page);
+  for (const [session, miles] of [["Quality", 0.1], ["Easy", 0.2]]) {
+    const row = runRow(page, 22, session);
+    await row.locator(".shoe-select").selectOption({ label: "Shoe 1" });
+    await expect.poll(async () => (await dbRun(page, 22, session)).shoeId).toBe((await shoeByName(page, "Shoe 1")).id);
+    await setActual(runRow(page, 22, session), miles);
+    await expect.poll(async () => (await dbRun(page, 22, session)).actual).toBe(miles);
+  }
+  await expect(tile(page, "Actual miles logged")).toHaveText(String(SEED.actual + 0.3));
+  await expect(tile(page, "Miles remaining")).toHaveText(String(Math.round((SEED.planned - SEED.actual - 0.3) * 10) / 10));
+  await gotoTab(page, "Shoes");
+  await expect(page.locator(".shoe-card").first().locator(".shoe-miles-input")).toHaveValue("0.3");
+});
+
+test("shoe miles follow every run edit", async ({ page, dialogs }) => {
+  await start(page);
+  const row = () => runRow(page, 22, "Quality");
+  await row().locator(".shoe-select").selectOption({ label: "Shoe 1" });
+  await expect.poll(() => shoeMiles(page, "Shoe 1")).toBe(0);
+  await row().locator(".done-toggle").check();
+  await expect.poll(() => shoeMiles(page, "Shoe 1")).toBe(7); // ticking fills actual = plan
+  expect((await dbRun(page, 22, "Quality")).actual).toBe(7);
+
+  await setActual(row(), 8);
+  await expect.poll(() => shoeMiles(page, "Shoe 1")).toBe(8);
+
+  await row().locator(".shoe-select").selectOption({ label: "Shoe 2" });
+  await expect.poll(() => shoeMiles(page, "Shoe 2")).toBe(8);
+  expect(await shoeMiles(page, "Shoe 1")).toBe(0);
+
+  await row().locator(".done-toggle").uncheck();
+  await expect.poll(() => shoeMiles(page, "Shoe 2")).toBe(0);
+  expect((await dbRun(page, 22, "Quality")).actual).toBeNull();
+
+  // Deleting a logged run takes its miles back off the shoe.
+  await row().locator(".done-toggle").check();
+  await expect.poll(() => shoeMiles(page, "Shoe 2")).toBe(7);
+  await page.getByRole("button", { name: "Edit plan" }).click();
+  await weekCard(page, 22).locator('input.f-date[value="2026-10-20"]').locator("xpath=ancestor::div[contains(@class,'run-row')]").locator(".delete-run-btn").click();
+  await expect.poll(() => shoeMiles(page, "Shoe 2")).toBe(0);
+  expect((await db.runs(page, await firstCycleId(page))).length).toBe(SEED.runs - 1);
+  expect(dialogs.seen.some((d) => d.type === "confirm" && d.message.includes("Delete"))).toBe(true);
+});
+
+test("deleting a shoe keeps run history, and those runs can still be edited", async ({ page }) => {
+  await start(page);
+  // Default shoe tags every run, including all past ones.
+  await gotoTab(page, "Shoes");
+  await page.locator("#defaultShoeSelect").selectOption({ label: "Shoe 1" });
+  await expect.poll(() => shoeMiles(page, "Shoe 1")).toBe(SEED.actual);
+  const shoe1Id = (await shoeByName(page, "Shoe 1")).id;
+
+  await gotoTab(page, "Schedule");
+  await runRow(page, 22, "Quality").locator(".done-toggle").check();
+  await expect.poll(() => shoeMiles(page, "Shoe 1")).toBe(SEED.actual + 7);
+
+  // Delete Shoe 1.
+  await gotoTab(page, "Shoes");
+  await page.locator(".shoe-card", { has: page.locator('input.shoe-name-input[value="Shoe 1"]') }).locator(".delete-run-btn").click();
+  await expect(page.locator(".shoe-card")).toHaveCount(2);
+
+  // History is untouched: runs keep their shoe tag.
+  expect((await dbRun(page, 22, "Quality")).shoeId).toBe(shoe1Id);
+  expect((await dbRun(page, 1, "Long")).shoeId).toBe(shoe1Id);
+  await gotoTab(page, "Schedule");
+  await expect(runRow(page, 22, "Quality").locator(".shoe-select option:checked")).toHaveText("Deleted shoe");
+
+  // Editing those runs still saves (this used to fail silently).
+  await runRow(page, 22, "Quality").locator(".done-toggle").uncheck();
+  await expect.poll(async () => (await dbRun(page, 22, "Quality")).done).toBe(false);
+  expect((await dbRun(page, 22, "Quality")).actual).toBeNull();
+  expect((await dbRun(page, 22, "Quality")).shoeId).toBe(shoe1Id);
+  await runRow(page, 22, "Quality").locator(".done-toggle").check();
+  await expect.poll(async () => (await dbRun(page, 22, "Quality")).actual).toBe(7);
+  await expect(page.locator("#saveError")).toBeHidden();
+
+  // Picking a new default shoe doesn't move the deleted shoe's runs onto it.
+  await gotoTab(page, "Shoes");
+  await page.locator("#defaultShoeSelect").selectOption({ label: "Shoe 2" });
+  await expect(page.locator("#defaultShoeSelect")).toHaveValue((await shoeByName(page, "Shoe 2")).id);
+  await expect.poll(async () => (await db.cycles(page))[0].defaultShoeId).toBe((await shoeByName(page, "Shoe 2")).id);
+  expect(await shoeMiles(page, "Shoe 2")).toBe(0);
+  expect((await dbRun(page, 1, "Long")).shoeId).toBe(shoe1Id);
+});
+
+test("a failed save shows a message that stays until dismissed", async ({ page, errors }) => {
+  errors.allow = true; // the failed save is logged to the console on purpose
+  await start(page);
+  await page.evaluate(() => (window.__fakeFirestore.failNextWrite = "permission-denied"));
+  const notes = runRow(page, 22, "Quality").locator(".run-notes-input");
+  await notes.fill("felt good");
+  await notes.press("Tab");
+  const banner = page.locator("#saveError");
+  await expect(banner).toBeVisible();
+  await expect(banner).toContainText("didn't save");
+  await expect(banner).toContainText("Missing or insufficient permissions");
+  expect((await dbRun(page, 22, "Quality")).notes).toBe("7 tempo");
+
+  // A later successful save (which refreshes the screen) doesn't hide it.
+  const easyNotes = runRow(page, 22, "Easy").locator(".run-notes-input");
+  await easyNotes.fill("ok");
+  await easyNotes.press("Tab");
+  await expect.poll(async () => (await dbRun(page, 22, "Easy")).notes).toBe("ok");
+  await expect(banner).toBeVisible();
+
+  await banner.getByRole("button", { name: "Dismiss" }).click();
+  await expect(banner).toBeHidden();
+  expect(errors.list.every((e) => e.includes("insufficient permissions"))).toBe(true);
+});
+
+test("edit mode: add and delete a run, add a run style, add a week", async ({ page, dialogs }) => {
+  await start(page);
+  const cycleId = await firstCycleId(page);
+  await page.getByRole("button", { name: "Edit plan" }).click();
+  await expect(page.locator("#editHint")).toBeVisible();
+
+  await page.getByRole("button", { name: "+ Add a run to week 22" }).click();
+  await expect.poll(async () => (await db.runs(page, cycleId)).length).toBe(SEED.runs + 1);
+  const newRow = weekCard(page, 22).locator(".run-row.editing", { has: page.locator('input.f-plan[value="0"]') });
+  await expect(newRow).toHaveCount(1);
+
+  dialogs.answer("Speed");
+  await newRow.locator("select.f-session").selectOption("__add_new__");
+  await expect.poll(async () => (await db.settings(page)).runStyles).toContain("Speed");
+  await expect.poll(async () => (await db.runs(page, cycleId)).filter((r) => r.session === "Speed").length).toBe(1);
+
+  await weekCard(page, 22).locator(".run-row.editing", { has: page.locator('input.f-plan[value="0"]') }).locator(".delete-run-btn").click();
+  await expect.poll(async () => (await db.runs(page, cycleId)).length).toBe(SEED.runs);
+
+  dialogs.answer("29", "2026-12-13");
+  await page.getByRole("button", { name: "+ Add a new week" }).click();
+  await expect.poll(async () => (await db.runs(page, cycleId)).filter((r) => r.week === 29).map((r) => r.date)).toEqual(["2026-12-13"]);
+
+  await page.getByRole("button", { name: "Done editing" }).click();
+  await expect(page.locator("#editHint")).toBeHidden();
+  await expect(page.locator("#tab-schedule .delete-run-btn")).toHaveCount(0);
+});
+
+test("cycles: create, archive, restore, and delete forever (taking its miles off the shoes)", async ({ page, dialogs }) => {
+  await start(page);
+  await runRow(page, 22, "Quality").locator(".shoe-select").selectOption({ label: "Shoe 1" });
+  await expect.poll(async () => (await dbRun(page, 22, "Quality")).shoeId).toBeTruthy();
+  await runRow(page, 22, "Quality").locator(".done-toggle").check();
+  await expect.poll(() => shoeMiles(page, "Shoe 1")).toBe(7);
+
+  await page.getByRole("button", { name: "Manage cycles" }).click();
+  dialogs.answer("Spring 2027", "2027-04-01");
+  await page.getByRole("button", { name: "+ New cycle" }).click();
+  await expect(page.locator("#cycleSelect option:checked")).toHaveText("Spring 2027");
+  await expect(page.locator("#tab-schedule")).toContainText("No runs in this cycle yet.");
+  const spring = await (async () => (await db.cycles(page)).find((c) => c.name === "Spring 2027"))();
+  expect(spring).toMatchObject({ raceDate: "2027-04-01", status: "active" });
+
+  const springRow = page.locator(".cycle-row", { has: page.locator('input.cycle-name-input[value="Spring 2027"]') });
+  await springRow.getByRole("button", { name: "Archive" }).click();
+  await expect(page.locator("#cycleSelect option", { hasText: "Spring 2027" })).toHaveCount(0);
+  await expect(page.locator("#manageCyclesPanel")).toContainText("Archived");
+  await expect(page.locator("#cycleSelect option:checked")).toHaveText("Fall 2026 Marathon");
+
+  await springRow.getByRole("button", { name: "Restore" }).click();
+  await expect(page.locator("#cycleSelect option:checked")).toHaveText("Spring 2027");
+  expect((await db.cycles(page)).find((c) => c.name === "Spring 2027").status).toBe("active");
+
+  await page.locator("#cycleSelect").selectOption({ label: "Fall 2026 Marathon" });
+  await expect(page.locator(".week-card.current-week")).toBeVisible();
+
+  const fallId = await firstCycleId(page);
+  const fallRow = page.locator(".cycle-row", { has: page.locator('input.cycle-name-input[value="Fall 2026 Marathon"]') });
+  await fallRow.getByRole("button", { name: "Delete this cycle forever" }).click();
+  await expect.poll(async () => (await db.cycles(page)).map((c) => c.name)).toEqual(["Spring 2027"]);
+  expect(await db.runs(page, fallId)).toEqual([]);
+  expect(await shoeMiles(page, "Shoe 1")).toBe(0);
+});
+
+test("export and import a cycle", async ({ page, dialogs }) => {
+  // 9:30 pm Pacific on Oct 22 -- already Oct 23 in UTC. The file name must use the local date.
+  await page.clock.setFixedTime(new Date("2026-10-22T21:30:00-07:00"));
+  await start(page);
+  await runRow(page, 22, "Quality").locator(".shoe-select").selectOption({ label: "Shoe 1" });
+  await expect.poll(async () => (await dbRun(page, 22, "Quality")).shoeId).toBeTruthy();
+  await runRow(page, 22, "Quality").locator(".done-toggle").check();
+  await expect.poll(() => shoeMiles(page, "Shoe 1")).toBe(7);
+
+  const [download] = await Promise.all([
+    page.waitForEvent("download"),
+    page.getByRole("button", { name: "Export this cycle" }).click(),
+  ]);
+  expect(download.suggestedFilename()).toBe("marathon-tracker-backup-2026-10-22.json");
+  const exported = JSON.parse(fs.readFileSync(await download.path(), "utf8"));
+  expect(exported.cycleName).toBe("Fall 2026 Marathon");
+  expect(exported.rows).toHaveLength(SEED.runs);
+  expect(exported.rows.find((r) => r.week === 22 && r.session === "Quality")).toMatchObject({ done: true, actual: 7, notes: "7 tempo" });
+
+  const backup = {
+    rows: [
+      { week: 1, date: "2027-01-03", session: "Easy", plan: 4, actual: null, done: false, notes: "first" },
+      { week: 2, date: "2027-01-10", session: "Long", plan: 6, actual: null, done: false, notes: "" },
+    ],
+  };
+  await page.locator("#importFile").setInputFiles({ name: "backup.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(backup)) });
+  await expect.poll(async () => (await db.runs(page, await firstCycleId(page))).length).toBe(2);
+  await expect(page.locator(".week-card.current-week .week-title")).toContainText("Week 1");
+  expect(await shoeMiles(page, "Shoe 1")).toBe(0); // the replaced runs' miles came back off the shoe
+  expect(dialogs.seen.map((d) => d.message)).toContain("Import complete.");
+});
+
+test("layout fits the screen on every tab", async ({ page }, testInfo) => {
+  await start(page);
+  for (const tab of ["Schedule", "Shoes", "Reference"]) {
+    await gotoTab(page, tab);
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+    expect(overflow, `${tab} tab scrolls sideways`).toBeLessThanOrEqual(0);
+  }
+  await gotoTab(page, "Schedule");
+  const main = await page.locator(".schedule-main").boundingBox();
+  const side = await page.locator(".schedule-sidebar").boundingBox();
+  if (testInfo.project.name === "phone") {
+    expect(side.y).toBeGreaterThanOrEqual(main.y + main.height - 1); // completed weeks stack below
+  } else {
+    expect(side.x).toBeGreaterThanOrEqual(main.x + main.width - 1); // completed weeks sit to the right
+  }
+  // The completed-week rows expand on tap.
+  const firstCompleted = page.locator(".wrc-head").first();
+  await firstCompleted.click();
+  await expect(page.locator(".wrc-body")).toHaveCount(1);
+});
+
+// Accessibility: automated WCAG 2.1 A/AA check of every screen, light and
+// dark. Only serious and critical problems fail the test. KNOWN_A11Y lists
+// problems that already existed when this suite was written (2026-10-21),
+// as "rule element" -> reason. Anything not on the list fails.
+const KNOWN_A11Y = {
+  "color-contrast #signInBtn": "white on the blue accent is 4.4:1 (needs 4.5) -- pre-existing",
+  "color-contrast #signOutBtn": "blue accent link on the page background is 4.2:1 (needs 4.5) -- pre-existing",
+  "color-contrast .current-badge": "white on the blue accent is 4.4:1 (needs 4.5) -- pre-existing",
+  "color-contrast #editModeBtn": "'Done editing' is white on the blue accent, 4.4:1 (needs 4.5) -- pre-existing",
+  'color-contrast button[data-tab="schedule"]': "dark mode: selected tab is white on blue, 3.6:1 -- pre-existing",
+  'color-contrast button[data-tab="shoes"]': "dark mode: selected tab is white on blue, 3.6:1 -- pre-existing",
+  'color-contrast button[data-tab="reference"]': "dark mode: selected tab is white on blue, 3.6:1 -- pre-existing",
+};
+
+test("accessibility: no new serious problems on any screen", async ({ page, errors }) => {
+  errors.allow = true; // one scan deliberately shows the failed-save message
+  const scan = async (label) => {
+    const results = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze();
+    const found = [];
+    for (const v of results.violations) {
+      if (v.impact !== "serious" && v.impact !== "critical") continue;
+      for (const node of v.nodes) {
+        const key = `${v.id} ${node.target.join(" ")}`;
+        if (!(key in KNOWN_A11Y)) found.push(`${label}: ${key} (${v.impact}) -- ${v.help}`);
+      }
+    }
+    return found;
+  };
+  const problems = [];
+  await openApp(page);
+  problems.push(...(await scan("signed out")));
+  await signIn(page);
+  problems.push(...(await scan("schedule")));
+  await page.getByRole("button", { name: "Edit plan" }).click();
+  problems.push(...(await scan("edit mode")));
+  await page.getByRole("button", { name: "Done editing" }).click();
+  await page.getByRole("button", { name: "Manage cycles" }).click();
+  problems.push(...(await scan("manage cycles")));
+  await gotoTab(page, "Shoes");
+  problems.push(...(await scan("shoes")));
+  await gotoTab(page, "Reference");
+  problems.push(...(await scan("reference")));
+
+  await gotoTab(page, "Schedule");
+  await page.evaluate(() => (window.__fakeFirestore.failNextWrite = "permission-denied"));
+  const notes = runRow(page, 22, "Quality").locator(".run-notes-input");
+  await notes.fill("x");
+  await notes.press("Tab");
+  await expect(page.locator("#saveError")).toBeVisible();
+  problems.push(...(await scan("save error showing")));
+
+  await page.emulateMedia({ colorScheme: "dark" });
+  problems.push(...(await scan("dark: schedule + save error")));
+  await gotoTab(page, "Shoes");
+  problems.push(...(await scan("dark: shoes")));
+  await gotoTab(page, "Reference");
+  problems.push(...(await scan("dark: reference")));
+  expect(problems).toEqual([]);
+});
+
+test("load speed: app is usable quickly and the page stays small", async ({ page }) => {
+  const sizeKB = fs.statSync(APP_FILE).size / 1024;
+  expect(sizeKB, "index.html size (KB)").toBeLessThan(150);
+  const t0 = Date.now();
+  await start(page); // includes first-time account setup
+  const ms = Date.now() - t0;
+  testInfo().annotations.push({ type: "load-ms", description: String(ms) });
+  expect(ms, "time from opening the page to a usable schedule (ms, fake backend)").toBeLessThan(3000);
+});
+function testInfo() {
+  return test.info();
+}

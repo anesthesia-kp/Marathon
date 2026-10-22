@@ -1,0 +1,14 @@
+{
+  "name": "marathon-tracker-tests",
+  "private": true,
+  "description": "Automated tests for index.html. Firebase is replaced by an in-memory fake, so tests never touch real data.",
+  "type": "module",
+  "scripts": {
+    "test": "playwright test",
+    "test:hook": "sh pre-commit-hook.test.sh"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "4.10.2",
+    "@playwright/test": "1.56.1"
+  }
+}

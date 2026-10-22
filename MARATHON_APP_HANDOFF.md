@@ -1,8 +1,8 @@
 # Marathon Tracker App — Handoff
 
-Last updated: 2026-10-21 (rewritten from the actual code — the previous version still described the pre-Firebase app)
+Last updated: 2026-10-21 (bug-fix build + test suite; earlier the same night rewritten from the actual code, since the previous version still described the pre-Firebase app)
 
-index.html fingerprint: `9ee2a855b26746271f8d5dbbd21c4de2dc9d14e5`
+index.html fingerprint: `4caa93ae8c24d9b6cf3c3fb4f954869339ec62d7`
 
 (That line is the `git hash-object index.html` value of the code this file describes. If it doesn't match the current index.html, this file is out of date — stop and fix it from the code before doing anything else. A git hook blocks any commit that changes index.html without updating this line.)
 
@@ -34,17 +34,18 @@ A personal marathon-training tracker. Started as a Google Sheet, now a single-fi
 - This file matches the code (fingerprint matches), `DECISIONS.md` is up to date, everything is committed, no `.lock` files left in `.git`.
 - Paste the contents of `START_HERE_PROMPT.md` into chat, point to this file, and give the one-line commit message for anything not yet pushed.
 
-## Current state (commit 600db19, pushed)
+## Current state
 
 Single `index.html` (HTML + CSS + vanilla JS, no build step, no framework). Firebase JS SDK **v13.0.0** loaded as ES modules from the gstatic CDN (`firebase-app`, `firebase-auth`, `firebase-firestore`). Firebase config is inline in the script (not secret — the security rules are what protect the data).
 
 ### Features built
 - **Sign-in:** Google Sign-In via popup. Signed-out screen → app shell. Same Google account = same data on phone and desktop.
 - **Training cycles:** dropdown to switch between active cycles; "Manage cycles" panel to rename, set race date, create, archive, restore, or permanently delete (delete also reverses that cycle's shoe miles). Last-selected cycle is remembered per device in `localStorage` (`marathon-active-cycle-<uid>`) — the only thing still in localStorage.
-- **Schedule tab:** current week pinned on top (= first week, by week number, with any unfinished run), upcoming weeks below, completed weeks collapsed in a right-hand sidebar (stacks below on mobile). Each run: checkbox + date, run style, past-due flag, shoe dropdown, notes, plan miles, actual miles. Checking a run fills actual = plan; unchecking clears it. Typing an actual marks it done.
+- **Schedule tab:** current week pinned on top (= first week, by week number, with any unfinished run), upcoming weeks below, completed weeks collapsed in a right-hand sidebar (stacks below on mobile). Runs inside a week are listed in date order, and "week ending" is the week's latest date. Each run: checkbox + date, run style, shoe dropdown, notes, plan miles, actual miles. (There is no past-due flag — removed by the user's choice.) Checking a run fills actual = plan; unchecking clears it. Typing an actual marks it done.
 - **Edit mode** ("Edit plan" button): every week shown in full; edit style (dropdown with "+ Add new style…", saved account-wide), plan miles, date; add/delete runs; add a week.
-- **Stat tiles + overall progress meter** (runs done, % done, planned, actual, remaining).
-- **Shoes tab:** add/rename/delete shoes, type a mileage directly, set a per-cycle default shoe (auto-applied to runs the user hasn't manually assigned — `shoeAuto` flag). Shoe totals move automatically and atomically with run edits.
+- **Stat tiles + overall progress meter** (runs done, % done, planned, actual, remaining). Miles shown rounded to one decimal.
+- **Failed saves** show a red message with a Dismiss button that stays until dismissed (any failed save anywhere in the app).
+- **Shoes tab:** add/rename/delete shoes, type a mileage directly, set a per-cycle default shoe (auto-applied to runs the user hasn't manually assigned — `shoeAuto` flag). Shoe totals move automatically and atomically with run edits (shown rounded to one decimal). **Deleting a shoe never rewrites history:** runs logged with it keep the tag (their dropdown shows "Deleted shoe") and their miles, are never moved onto a new default shoe, and can still be edited normally.
 - **Reference tab:** goal pace (drives the header subtitle), pace-zone table, max/rest HR, HR-zone table, HR note — all editable, rows can be added/deleted.
 - **Export / import** of the active cycle as JSON (import replaces the cycle's runs, reversing their shoe miles first).
 - Light/dark theme via CSS custom properties; responsive phone + desktop layout.
@@ -57,29 +58,34 @@ users/{uid}/cycles/{cycleId}
 users/{uid}/cycles/{cycleId}/runs/{runId}
   week (number), date ("YYYY-MM-DD" or ""), session (run style string), plan (miles), actual (miles | null),
   done (bool), notes (string), shoeId (string | null),
-  shoeMilesApplied (miles this run currently contributes to its shoe's total — the bookkeeping that keeps shoe totals correct),
+  shoeMilesApplied (miles this run currently contributes to its shoe's total — the bookkeeping that keeps shoe totals correct;
+                    0 once the run is edited after its shoe was deleted),
   shoeAuto (true = shoe came from the cycle default; false = user picked it, including picking "none")
   desc — legacy field from the Sheet; auto-copied into notes on load, no longer shown
 
 users/{uid}/shoes/{shoeId}
   name, miles (the shoe's running total — directly editable AND auto-adjusted by runs via increment()), createdAt
+  (a run's shoeId may point at a shoe that has been deleted — kept on purpose as history; all shoe-total
+   bookkeeping goes through addShoeDelta/applyShoeDeltas, which skip shoes that no longer exist)
 
 users/{uid}/settings/{auto-id}      (exactly one doc per account)
   runStyles [string], goalPace, paceZones [{zone, pace, feel}], hrMax, hrRest, heartRateZones [{zone, bpm}], hrNote, createdAt
 ```
-Note: the old handoff proposed `manualOffsetMiles` + computed totals for shoes. That is **not** what was built — shoes store one `miles` total that both the user and run edits change.
-
 First sign-in on an empty account seeds: one cycle "Fall 2026 Marathon" (race 2026-12-06) from `SEED_PLAN` (weeks 1–28, 77 runs, 672 planned miles), three shoes ("Shoe 1–3"), and the settings doc.
 
 **Security rules** (copy kept in the HTML comment at the top of `index.html`): read/write under `users/{uid}/**` only if `request.auth.uid == uid`.
 
-## Known issues found 2026-10-21 (not yet fixed)
+## Known issues
 
-1. **Runs within a week aren't in date order.** Firestore returns runs in document-ID order, and nothing sorts them by date — so runs inside a week can appear out of order, and the "week ending" date (taken from whichever run happens to be listed last) can be wrong (e.g. week 22 can show Oct 20 instead of Oct 25).
-2. **"Today" is computed in UTC.** After 5 pm Pacific (4 pm in winter) the app thinks it's tomorrow, so that day's runs show "past due" a day early.
-3. **Deleting a shoe breaks edits to runs tagged with it.** Those runs still point at the deleted shoe; any later change to their actual miles or done box tries to adjust a shoe that no longer exists, Firestore rejects the whole write, and the edit silently doesn't save.
-4. **Write failures are silent.** Run/shoe/settings writes have no error handling, so a failed save gives no message.
-5. Planned/actual mile tiles show unrounded numbers (could display e.g. 671.9999999 after decimal edits).
+1. **Low contrast that was already there before the test suite** (accessibility standard is 4.5:1): white on the blue accent is 4.4:1 (Sign in button, "This week" badge, "Done editing" button); the blue "Sign out" link is 4.2:1; in dark mode the selected tab is a filled blue pill with white text at 3.6:1. The tab one looks unintended: the generic `button.active` rule (blue fill) overrides the `.tab-btn` underline style. Not changed (visual change — the user's call); listed in `KNOWN_A11Y` in `tests/app.spec.mjs` so any *new* problem still fails.
+2. **Firestore security rules are untested.** The emulator download (storage.googleapis.com) is blocked from both the cloud workspace and the computer's shell. It has also not been verified that the rules published in the Firebase console match the copy in the comment at the top of `index.html`.
+
+## Tests
+
+- Everything is in `tests/` — see `tests/README.md`. Firebase is replaced by an in-memory fake (`tests/fake-firebase/`) that behaves like real Firestore where the app depends on it; every real network request is blocked during tests.
+- Run (cloud workspace or anywhere with Node): `cd tests && npm install && npx playwright test` (24 tests: 12 at desktop size, 12 at phone size, ~45 s), and `sh pre-commit-hook.test.sh` (7 tests). In the cloud workspace, Playwright is pinned to 1.56.1 to match the preinstalled Chromium build — don't run `playwright install`.
+- To prove a test catches a bug, run it against an older copy: `APP_FILE=/path/to/old/index.html npx playwright test`.
+- Results for this build: app tests 24 passed, 0 failed; hook tests 7 passed, 0 failed. Against the version before this build (past-due label stripped so it doesn't confuse the run lookups), the 6 tests covering this build's fixes fail and the other 6 pass.
 
 ## Known environment gotchas (learned the hard way — don't rediscover these)
 
@@ -99,3 +105,5 @@ First sign-in on an empty account seeds: one cycle "Fall 2026 Marathon" (race 20
 - `START_HERE_PROMPT.md` — the short message to start a new session.
 - `MARATHON_APP_HANDOFF.md` — this file.
 - `.githooks/pre-commit` — the docs guard (tracked copy; installed copy at `.git/hooks/pre-commit`).
+- `tests/` — the automated test suite (see "Tests" above).
+- `.gitignore` — keeps test tooling (`tests/node_modules`, test results) out of git.
