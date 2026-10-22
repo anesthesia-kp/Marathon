@@ -24,9 +24,9 @@
     color-scheme: light;
     --page:            #f9f9f7;
     --surface:         #fcfcfb;
-    --text-primary:    #0b0b0b;
-    --text-secondary:  #3a3936;
-    --text-muted:      #6e6c66;
+    --text-primary:    #000000;
+    --text-secondary:  #211f1c;
+    --text-muted:      #514f49;
     --gridline:        #e1e0d9;
     --baseline:        #c3c2b7;
     --border:          rgba(11,11,11,0.10);
@@ -42,9 +42,9 @@
       color-scheme: dark;
       --page:            #0d0d0d;
       --surface:         #1a1a19;
-      --text-primary:    #f0efec;
-      --text-secondary:  #d6d5cc;
-      --text-muted:      #a3a199;
+      --text-primary:    #ffffff;
+      --text-secondary:  #e4e3da;
+      --text-muted:      #b7b5ab;
       --gridline:        #2c2c2a;
       --baseline:        #383835;
       --border:          rgba(255,255,255,0.10);
@@ -380,8 +380,7 @@
   }
   .run-info { min-width: 0; }
   .run-session { font-size: 14px; font-weight: 600; }
-  .run-desc { font-size: 13px; color: var(--text-secondary); }
-  .run-desc .overdue {
+  .overdue {
     color: var(--serious);
     font-weight: 600;
   }
@@ -437,7 +436,7 @@
     flex-wrap: wrap;
     gap: 6px;
   }
-  .edit-fields input {
+  .edit-fields input, .edit-fields select {
     font: inherit;
     font-size: 13px;
     padding: 5px 7px;
@@ -446,10 +445,9 @@
     background: var(--page);
     color: var(--text-primary);
   }
-  .edit-fields input.f-session { width: 76px; }
-  .edit-fields input.f-desc    { flex: 1 1 110px; min-width: 0; }
-  .edit-fields input.f-plan    { width: 52px; text-align: right; }
-  .edit-fields input.f-date    { width: 132px; }
+  .edit-fields select.f-session { width: 130px; }
+  .edit-fields input.f-plan     { width: 52px; text-align: right; }
+  .edit-fields input.f-date     { width: 132px; }
   .delete-run-btn {
     border: 1px solid var(--border);
     background: var(--surface);
@@ -555,6 +553,53 @@
   table.ref-table th { color: var(--text-secondary); font-weight: 500; font-size: 13px; }
   .ref-note { font-size: 13px; color: var(--text-secondary); margin-top: 8px; }
 
+  /* ---- reference tab: editable fields ---- */
+  .ref-field-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    font-size: 13px;
+  }
+  .ref-field-row label { color: var(--text-secondary); }
+  .ref-text-input {
+    font: inherit;
+    font-size: 13px;
+    padding: 5px 7px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--page);
+    color: var(--text-primary);
+  }
+  .ref-number-input { width: 64px; }
+  table.ref-table-editable td { padding: 4px 6px; }
+  table.ref-table-editable td:last-child { padding: 4px 0 4px 4px; width: 1%; }
+  .ref-input {
+    font: inherit;
+    font-size: 13px;
+    width: 100%;
+    padding: 5px 7px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--page);
+    color: var(--text-primary);
+  }
+  .ref-input-narrow { max-width: 90px; }
+  .ref-note-input {
+    display: block;
+    width: 100%;
+    margin-top: 10px;
+    font: inherit;
+    font-size: 13px;
+    padding: 7px 9px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--page);
+    color: var(--text-primary);
+    resize: vertical;
+    min-height: 54px;
+  }
+
   footer {
     font-size: 11px;
     color: var(--text-muted);
@@ -580,7 +625,7 @@
   </div>
 
   <h1>Marathon Tracker</h1>
-  <p class="subtitle">Goal pace 8:00&ndash;8:30/mi</p>
+  <p class="subtitle" id="goalPaceSubtitle">Goal pace 8:00&ndash;8:30/mi</p>
 
   <div class="cycle-bar">
     <select id="cycleSelect" aria-label="Training cycle"></select>
@@ -618,28 +663,7 @@
 
   <div class="tab-panel" id="tab-shoes"></div>
 
-  <div class="tab-panel" id="tab-reference">
-    <div class="ref-card">
-      <h3>Pace zones (goal MP 8:00&ndash;8:30)</h3>
-      <table class="ref-table">
-        <tr><th>Zone</th><th>Pace /mi</th><th>Feel</th></tr>
-        <tr><td>Recovery / Easy</td><td>9:15</td><td>Conversational, almost too slow</td></tr>
-        <tr><td>Long run</td><td>9:00</td><td>Relaxed; not near race pace</td></tr>
-        <tr><td>Marathon pace</td><td>8:00&ndash;8:30</td><td>Goal effort; controlled</td></tr>
-        <tr><td>Tempo / Threshold</td><td>7:40</td><td>Comfortably hard</td></tr>
-      </table>
-    </div>
-    <div class="ref-card">
-      <h3>Heart rate (max 175 &middot; rest 60)</h3>
-      <table class="ref-table">
-        <tr><td>Recovery</td><td>118&ndash;129 bpm</td></tr>
-        <tr><td>Easy / long</td><td>129&ndash;141 bpm</td></tr>
-        <tr><td>Marathon (8:00)</td><td>147&ndash;155 bpm</td></tr>
-        <tr><td>Tempo</td><td>152&ndash;161 bpm</td></tr>
-      </table>
-      <p class="ref-note">Easy/long days: cap HR ~140, let pace follow (&le;133 recovery). Current HR steers; average HR grades.</p>
-    </div>
-  </div>
+  <div class="tab-panel" id="tab-reference"></div>
 
   <footer>Synced to your Google account &middot; sign in with the same account on another device to see the same plan</footer>
 </div>
@@ -808,16 +832,19 @@ const SEED_PLAN = [
    STATE
    Firestore is now the only source of truth. Shape, per account
    (uid):
-     users/{uid}/cycles/{cycleId}                      -- {name, raceDate, status: "active"|"archived", createdAt}
-     users/{uid}/cycles/{cycleId}/runs/{runId}          -- {week, date, session, desc, plan, actual, done, shoeId, shoeMilesApplied}
+     users/{uid}/cycles/{cycleId}                      -- {name, raceDate, status: "active"|"archived", defaultShoeId, createdAt}
+     users/{uid}/cycles/{cycleId}/runs/{runId}          -- {week, date, session, plan, actual, done, notes, shoeId, shoeMilesApplied, shoeAuto}
      users/{uid}/shoes/{shoeId}                         -- {name, miles, createdAt}
-   `plan`, `cycles` and `shoes` below are always just the latest
-   snapshot from Firestore -- never written to directly, only read.
+     users/{uid}/settings/{settingsId}                  -- exactly one doc: {runStyles, goalPace, paceZones, hrMax, hrRest, heartRateZones, hrNote}
+   `plan`, `cycles`, `shoes` and `settings` below are always just the
+   latest snapshot from Firestore -- never written to directly, only read.
    ============================================================ */
 let currentUser = null;
 let cycles = [];
 let shoes = [];
 let plan = [];
+let settings = null;
+let settingsDocId = null;
 let activeCycleId = null;
 let subscribedRunsCycleId = undefined; // sentinel so the very first subscribe always runs
 let editMode = false;
@@ -826,6 +853,7 @@ let expandedCompletedWeeks = new Set(); // which collapsed completed-week rows a
 let unsubCycles = null;
 let unsubRuns = null;
 let unsubShoes = null;
+let unsubSettings = null;
 
 function escapeHtml(s) {
   return String(s ?? "").replace(/[&<>"']/g, (c) => ({
@@ -868,7 +896,10 @@ async function ensureInitialCycle(uid) {
   const batch = writeBatch(db);
   SEED_PLAN.forEach((row) => {
     const runRef = doc(runsCol);
-    batch.set(runRef, { ...row, shoeId: null, shoeMilesApplied: 0, shoeAuto: true, notes: "" });
+    // The old sheet's `desc` column (e.g. "11 easy") is retired in favor of
+    // the notes field, which this seeds it into so nothing is lost.
+    const { desc, ...rest } = row;
+    batch.set(runRef, { ...rest, shoeId: null, shoeMilesApplied: 0, shoeAuto: true, notes: desc || "" });
   });
   await batch.commit();
 }
@@ -884,6 +915,42 @@ async function ensureInitialShoes(uid) {
     batch.set(ref, { name, miles: 0, createdAt: serverTimestamp() });
   });
   await batch.commit();
+}
+
+const DEFAULT_PACE_ZONES = [
+  { zone: "Recovery / Easy", pace: "9:15", feel: "Conversational, almost too slow" },
+  { zone: "Long run", pace: "9:00", feel: "Relaxed; not near race pace" },
+  { zone: "Marathon pace", pace: "8:00–8:30", feel: "Goal effort; controlled" },
+  { zone: "Tempo / Threshold", pace: "7:40", feel: "Comfortably hard" },
+];
+const DEFAULT_HR_ZONES = [
+  { zone: "Recovery", bpm: "118–129 bpm" },
+  { zone: "Easy / long", bpm: "129–141 bpm" },
+  { zone: "Marathon (8:00)", bpm: "147–155 bpm" },
+  { zone: "Tempo", bpm: "152–161 bpm" },
+];
+
+// One-time per account, just like the cycle/shoe seeding above. Pre-fills
+// the saved run styles from whatever distinct session types already exist
+// in the seed plan (so "Quality" and "RACE" are there from day one, not
+// just "Long/Tempo/Easy"), and the reference tab from its old hardcoded
+// content, so nothing changes visually until you actually edit it.
+async function ensureInitialSettings(uid) {
+  const col = collection(db, "users", uid, "settings");
+  const snap = await getDocs(col);
+  if (!snap.empty) return;
+
+  const defaultStyles = [...new Set(SEED_PLAN.map((r) => r.session).filter(Boolean))];
+  await addDoc(col, {
+    runStyles: defaultStyles,
+    goalPace: "8:00–8:30",
+    paceZones: DEFAULT_PACE_ZONES,
+    hrMax: 175,
+    hrRest: 60,
+    heartRateZones: DEFAULT_HR_ZONES,
+    hrNote: "Easy/long days: cap HR ~140, let pace follow (≤133 recovery). Current HR steers; average HR grades.",
+    createdAt: serverTimestamp(),
+  });
 }
 
 /* ============================================================
@@ -983,12 +1050,30 @@ function subscribeToRuns() {
       plan = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
       clearDataError();
       renderAll();
+      migrateDescToNotes();
     },
     (err) => {
       console.error(err);
       showDataError("Couldn't load this cycle's runs: " + err.message);
     }
   );
+}
+
+// One-time-per-run cleanup for accounts created before notes existed: any
+// run still carrying the old `desc` text but no notes yet gets that text
+// copied into notes, so nothing from the old sheet is lost now that the
+// description field is gone from the UI. Self-limiting -- once a run has
+// notes, it no longer matches and this becomes a no-op for it.
+async function migrateDescToNotes() {
+  if (!currentUser || !activeCycleId) return;
+  const toMigrate = plan.filter((r) => r.desc && String(r.desc).trim() && !(r.notes && String(r.notes).trim()));
+  if (!toMigrate.length) return;
+  const batch = writeBatch(db);
+  toMigrate.forEach((r) => {
+    const runRef = doc(db, "users", currentUser.uid, "cycles", activeCycleId, "runs", r.id);
+    batch.update(runRef, { notes: String(r.desc).trim() });
+  });
+  await batch.commit();
 }
 
 // Writing a run's `actual` miles or `shoeId` also keeps the assigned shoe's
@@ -1047,7 +1132,7 @@ async function addRun(week, afterDate) {
   const runsCol = collection(db, "users", currentUser.uid, "cycles", activeCycleId, "runs");
   const defaultShoeId = activeCycleRecord()?.defaultShoeId || null;
   await addDoc(runsCol, {
-    week, date: afterDate || "", session: "", desc: "",
+    week, date: afterDate || "", session: "",
     plan: 0, actual: null, done: false,
     shoeId: defaultShoeId, shoeMilesApplied: 0, shoeAuto: true, notes: "",
   });
@@ -1133,6 +1218,40 @@ async function applyDefaultShoeToUnsetRuns(shoeId) {
     if (delta !== 0) batch.update(doc(db, "users", currentUser.uid, "shoes", sid), { miles: increment(delta) });
   });
   await batch.commit();
+}
+
+/* ============================================================
+   FIRESTORE: SETTINGS (one doc per account -- saved run styles,
+   goal pace, and the editable reference tables)
+   ============================================================ */
+function subscribeToSettings() {
+  const col = collection(db, "users", currentUser.uid, "settings");
+  unsubSettings = onSnapshot(
+    col,
+    (snap) => {
+      const d = snap.docs[0];
+      settingsDocId = d ? d.id : null;
+      settings = d ? d.data() : null;
+      renderGoalPaceHeader();
+      renderSchedule(); // the edit-mode run-style dropdown reads settings.runStyles
+      renderReference();
+    },
+    (err) => {
+      console.error(err);
+      showDataError("Couldn't load your saved settings: " + err.message);
+    }
+  );
+}
+
+async function updateSettings(patch) {
+  if (!currentUser || !settingsDocId) return;
+  await updateDoc(doc(db, "users", currentUser.uid, "settings", settingsDocId), patch);
+}
+
+async function addRunStyle(name) {
+  const current = (settings && settings.runStyles) || [];
+  if (current.includes(name)) return;
+  await updateSettings({ runStyles: [...current, name] });
 }
 
 /* ============================================================
@@ -1273,13 +1392,21 @@ function weekSummary(weekRows) {
 // otherwise it's the checkbox + date, session/desc/shoe/notes, plan, actual.
 function renderRunRow(r) {
   if (editMode) {
+    const runStyles = (settings && settings.runStyles) || [];
+    // The current style always has an option even if it somehow isn't in
+    // the saved list (e.g. data from before this feature existed), so the
+    // select never silently shows the wrong thing.
+    const styleOptions = runStyles.includes(r.session) || !r.session
+      ? runStyles
+      : [r.session, ...runStyles];
     return `
       <div class="run-row editing">
         <div class="edit-fields">
-          <input class="f-session" aria-label="Session" placeholder="Session"
-                 value="${escapeHtml(r.session)}" data-id="${r.id}" data-field="session">
-          <input class="f-desc" aria-label="Description" placeholder="Description"
-                 value="${escapeHtml(r.desc)}" data-id="${r.id}" data-field="desc">
+          <select class="f-session" aria-label="Run style" data-id="${r.id}" data-field="session">
+            <option value="" ${!r.session ? "selected" : ""}>Style&hellip;</option>
+            ${styleOptions.map((s) => `<option value="${escapeHtml(s)}" ${r.session === s ? "selected" : ""}>${escapeHtml(s)}</option>`).join("")}
+            <option value="__add_new__">+ Add new style&hellip;</option>
+          </select>
           <input class="f-plan" aria-label="Plan miles" type="number" min="0" step="0.1"
                  value="${r.plan}" data-id="${r.id}" data-field="plan">
           <input class="f-date" aria-label="Date" type="date"
@@ -1290,9 +1417,6 @@ function renderRunRow(r) {
     `;
   }
   const isOverdue = !r.done && r.date && r.date < todayISO;
-  const descHtml = isOverdue
-    ? `${escapeHtml(r.desc)} <span class="overdue">&middot; past due</span>`
-    : escapeHtml(r.desc);
   const shoeHtml = shoes.length ? `
     <div class="run-shoe">
       <select class="shoe-select" data-id="${r.id}" aria-label="Shoe for this run">
@@ -1309,8 +1433,7 @@ function renderRunRow(r) {
         ${dateLabel ? `<span class="run-date">${dateLabel}</span>` : ""}
       </div>
       <div class="run-info">
-        <div class="run-session">${escapeHtml(r.session) || "(untitled)"}</div>
-        <div class="run-desc">${descHtml}</div>
+        <div class="run-session">${escapeHtml(r.session) || "(untitled)"}${isOverdue ? ' <span class="overdue">&middot; past due</span>' : ""}</div>
         ${shoeHtml}
         <input type="text" class="run-notes-input" placeholder="Notes"
                value="${escapeHtml(r.notes || "")}" data-id="${r.id}" aria-label="Notes for this run">
@@ -1318,9 +1441,8 @@ function renderRunRow(r) {
       <div class="run-plan">${fmtMi(r.plan)} plan</div>
       <div class="run-actual">
         <input type="number" inputmode="decimal" min="0" step="0.1"
-               placeholder="${r.plan}"
                value="${r.actual !== null && r.actual !== undefined ? r.actual : ""}"
-               data-id="${r.id}" class="actual-input">
+               data-id="${r.id}" class="actual-input" aria-label="Actual miles">
       </div>
     </div>
   `;
@@ -1371,11 +1493,17 @@ function attachRunRowHandlers(root) {
       const id = e.target.dataset.id;
       const run = findRow(id);
       const patch = { done: e.target.checked };
-      // Checking the box fills in the actual miles with the planned miles
-      // as a starting point -- still freely editable afterward. If actual
-      // already has a value (you logged it before checking), leave it alone.
-      if (e.target.checked && run && (run.actual === null || run.actual === undefined)) {
-        patch.actual = run.plan;
+      if (e.target.checked) {
+        // Checking the box fills in the actual miles with the planned miles
+        // as a starting point -- still freely editable afterward. If actual
+        // already has a value (you logged it before checking), leave it alone.
+        if (run && (run.actual === null || run.actual === undefined)) patch.actual = run.plan;
+      } else {
+        // Unchecking fully undoes it -- including any shoe mileage this run
+        // contributed, which only happens when `actual` changes (see
+        // updateRow). Clearing actual back to blank is what makes that
+        // reversal symmetric with checking the box.
+        patch.actual = null;
       }
       updateRow(id, patch);
     });
@@ -1413,6 +1541,23 @@ function attachEditModeHandlers(root) {
       let val = e.target.value;
       if (field === "plan") val = Number(val) || 0;
       updateRow(id, { [field]: val });
+    });
+  });
+  root.querySelectorAll(".edit-fields select.f-session").forEach((el) => {
+    el.addEventListener("change", async (e) => {
+      const id = e.target.dataset.id;
+      const val = e.target.value;
+      if (val === "__add_new__") {
+        const name = (window.prompt('New run style (e.g. "Speed", "Recovery")?', "") || "").trim();
+        if (name) {
+          await addRunStyle(name); // persisted for every future run, not just this one
+          await updateRow(id, { session: name });
+        } else {
+          e.target.value = findRow(id)?.session || ""; // cancelled -- put the dropdown back
+        }
+        return;
+      }
+      updateRow(id, { session: val });
     });
   });
   root.querySelectorAll(".delete-run-btn").forEach((el) => {
@@ -1561,6 +1706,98 @@ function renderShoes() {
 }
 
 /* ============================================================
+   RENDER: reference tab + goal pace (all editable, backed by `settings`)
+   ============================================================ */
+function renderGoalPaceHeader() {
+  const el = document.getElementById("goalPaceSubtitle");
+  if (el) el.textContent = "Goal pace " + ((settings && settings.goalPace) || "not set") + "/mi";
+}
+
+function renderReference() {
+  const panel = document.getElementById("tab-reference");
+  if (!settings) { panel.innerHTML = '<p class="muted-note">Loading&hellip;</p>'; return; }
+
+  const paceZones = settings.paceZones || [];
+  const hrZones = settings.heartRateZones || [];
+
+  const paceRowsHtml = paceZones.map((z, i) => `
+    <tr>
+      <td><input class="ref-input" data-table="pace" data-index="${i}" data-field="zone" value="${escapeHtml(z.zone)}" aria-label="Zone name"></td>
+      <td><input class="ref-input ref-input-narrow" data-table="pace" data-index="${i}" data-field="pace" value="${escapeHtml(z.pace)}" aria-label="Pace"></td>
+      <td><input class="ref-input" data-table="pace" data-index="${i}" data-field="feel" value="${escapeHtml(z.feel)}" aria-label="Feel"></td>
+      <td><button class="delete-run-btn" data-table="pace" data-index="${i}" title="Delete this row" aria-label="Delete this row">&times;</button></td>
+    </tr>`).join("");
+
+  const hrRowsHtml = hrZones.map((z, i) => `
+    <tr>
+      <td><input class="ref-input" data-table="hr" data-index="${i}" data-field="zone" value="${escapeHtml(z.zone)}" aria-label="Zone name"></td>
+      <td><input class="ref-input ref-input-narrow" data-table="hr" data-index="${i}" data-field="bpm" value="${escapeHtml(z.bpm)}" aria-label="BPM range"></td>
+      <td><button class="delete-run-btn" data-table="hr" data-index="${i}" title="Delete this row" aria-label="Delete this row">&times;</button></td>
+    </tr>`).join("");
+
+  panel.innerHTML = `
+    <div class="ref-card">
+      <h3>Goal pace</h3>
+      <div class="ref-field-row">
+        <label for="goalPaceInput">Shown at the top of the app</label>
+        <input id="goalPaceInput" class="ref-text-input" value="${escapeHtml(settings.goalPace || "")}" placeholder="e.g. 8:00–8:30">
+      </div>
+    </div>
+    <div class="ref-card">
+      <h3>Pace zones</h3>
+      <table class="ref-table ref-table-editable">
+        <tr><th>Zone</th><th>Pace /mi</th><th>Feel</th><th></th></tr>
+        ${paceRowsHtml}
+      </table>
+      <button id="addPaceRowBtn" class="add-run-btn">+ Add a pace zone</button>
+    </div>
+    <div class="ref-card">
+      <h3>Heart rate</h3>
+      <div class="ref-field-row">
+        <label for="hrMaxInput">Max HR</label>
+        <input id="hrMaxInput" class="ref-text-input ref-number-input" type="number" min="0" value="${settings.hrMax ?? ""}">
+        <label for="hrRestInput">Rest HR</label>
+        <input id="hrRestInput" class="ref-text-input ref-number-input" type="number" min="0" value="${settings.hrRest ?? ""}">
+      </div>
+      <table class="ref-table ref-table-editable">
+        <tr><th>Zone</th><th>BPM</th><th></th></tr>
+        ${hrRowsHtml}
+      </table>
+      <button id="addHrRowBtn" class="add-run-btn">+ Add a heart-rate zone</button>
+      <textarea id="hrNoteInput" class="ref-note-input" aria-label="Heart rate note" placeholder="Notes about pacing by heart rate">${escapeHtml(settings.hrNote || "")}</textarea>
+    </div>
+  `;
+
+  panel.querySelectorAll(".ref-input").forEach((el) => {
+    el.addEventListener("change", (e) => {
+      const table = e.target.dataset.table === "pace" ? "paceZones" : "heartRateZones";
+      const idx = Number(e.target.dataset.index);
+      const field = e.target.dataset.field;
+      const rows = (settings[table] || []).map((row, i) => (i === idx ? { ...row, [field]: e.target.value } : row));
+      updateSettings({ [table]: rows });
+    });
+  });
+  panel.querySelectorAll(".delete-run-btn[data-table]").forEach((el) => {
+    el.addEventListener("click", (e) => {
+      const table = e.target.dataset.table === "pace" ? "paceZones" : "heartRateZones";
+      const idx = Number(e.target.dataset.index);
+      const rows = (settings[table] || []).filter((_, i) => i !== idx);
+      updateSettings({ [table]: rows });
+    });
+  });
+  document.getElementById("goalPaceInput").addEventListener("change", (e) => updateSettings({ goalPace: e.target.value }));
+  document.getElementById("hrMaxInput").addEventListener("change", (e) => updateSettings({ hrMax: Number(e.target.value) || 0 }));
+  document.getElementById("hrRestInput").addEventListener("change", (e) => updateSettings({ hrRest: Number(e.target.value) || 0 }));
+  document.getElementById("hrNoteInput").addEventListener("change", (e) => updateSettings({ hrNote: e.target.value }));
+  document.getElementById("addPaceRowBtn").addEventListener("click", () => {
+    updateSettings({ paceZones: [...(settings.paceZones || []), { zone: "New zone", pace: "", feel: "" }] });
+  });
+  document.getElementById("addHrRowBtn").addEventListener("click", () => {
+    updateSettings({ heartRateZones: [...(settings.heartRateZones || []), { zone: "New zone", bpm: "" }] });
+  });
+}
+
+/* ============================================================
    TABS
    ============================================================ */
 document.querySelectorAll(".tab-btn").forEach((btn) => {
@@ -1594,7 +1831,7 @@ document.getElementById("exportBtn").addEventListener("click", () => {
     cycleName: cycle ? cycle.name : "",
     rows: plan.map((r) => ({
       week: r.week, date: r.date, session: r.session,
-      desc: r.desc, plan: r.plan, actual: r.actual, done: r.done, notes: r.notes || "",
+      plan: r.plan, actual: r.actual, done: r.done, notes: r.notes || "",
     })),
   };
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
@@ -1638,11 +1875,10 @@ document.getElementById("importFile").addEventListener("change", (e) => {
           week: Number(row.week) || 0,
           date: row.date || "",
           session: row.session || "",
-          desc: row.desc || "",
           plan: Number(row.plan) || 0,
           actual: row.actual === null || row.actual === undefined ? null : Number(row.actual),
           done: !!row.done,
-          notes: row.notes || "",
+          notes: row.notes || row.desc || "",
           shoeId: null,
           shoeMilesApplied: 0,
           shoeAuto: true,
@@ -1677,6 +1913,7 @@ onAuthStateChanged(auth, async (user) => {
   if (unsubCycles) { unsubCycles(); unsubCycles = null; }
   if (unsubRuns) { unsubRuns(); unsubRuns = null; }
   if (unsubShoes) { unsubShoes(); unsubShoes = null; }
+  if (unsubSettings) { unsubSettings(); unsubSettings = null; }
   subscribedRunsCycleId = undefined;
 
   currentUser = user;
@@ -1684,7 +1921,7 @@ onAuthStateChanged(auth, async (user) => {
   if (!user) {
     document.getElementById("appShell").hidden = true;
     document.getElementById("signedOutView").hidden = false;
-    cycles = []; shoes = []; plan = []; activeCycleId = null;
+    cycles = []; shoes = []; plan = []; settings = null; settingsDocId = null; activeCycleId = null;
     return;
   }
 
@@ -1695,6 +1932,7 @@ onAuthStateChanged(auth, async (user) => {
   try {
     await ensureInitialCycle(user.uid);
     await ensureInitialShoes(user.uid);
+    await ensureInitialSettings(user.uid);
   } catch (e) {
     console.error("First-time setup failed:", e);
     showDataError("Couldn't set up your account's data: " + e.message);
@@ -1706,6 +1944,7 @@ onAuthStateChanged(auth, async (user) => {
 
   subscribeToCycles();
   subscribeToShoes();
+  subscribeToSettings();
 });
 </script>
 </body>

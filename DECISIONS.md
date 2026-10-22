@@ -1,0 +1,40 @@
+# Marathon Tracker — Decisions Log
+
+Durable decisions about how this app is built, in roughly chronological order. Add to this as new decisions get made — newest at the bottom.
+
+## Architecture
+
+- **Single static `index.html`, no build step.** Deployed straight to GitHub Pages. Firebase JS SDK v13.0.0 loaded as ES modules from the gstatic CDN.
+- **New, dedicated Firebase project** (`marathon-training-3fb9e`) rather than reusing one from another project. Google Sign-In only (no email/password). Firestore holds all data under `users/{uid}/...`, with security rules restricting each user to their own subtree.
+- **Multi-cycle support**: training blocks (cycles) can be archived and restored, not just one single plan forever.
+
+## Schedule layout
+
+- Completed weeks collapse into a sidebar on the right, expandable on demand — they don't clutter the main view.
+- The current week is pinned at the top of the main column; upcoming weeks scroll below it.
+- "Current week" is whichever week (by ascending week number) has an unfinished run in it — not based on today's date, so it stays correct even if the user falls behind or works ahead.
+- Specific dates show next to each run's checkbox.
+- Checking a run's checkbox auto-fills its actual miles with the planned miles (still editable). Unchecking it clears that auto-filled value back out, and — since it's the same `updateRow` path as any other actual-miles edit — correctly reverses whatever shoe mileage had been added.
+
+## Shoes
+
+- 3 shoes tracked, each with a running mileage total kept in sync atomically with run edits/deletions/reassignments via Firestore batched writes (`increment()`).
+- A default shoe can be set and is auto-applied to runs — but a `shoeAuto` flag distinguishes "auto-assigned by default" from "deliberately chosen by the user (including deliberately choosing none)," so changing the default shoe never silently overwrites a manual choice.
+
+## Run styles
+
+- Replaced the free-text "session" field with a `<select>` of reusable styles (Long, Tempo, Easy, Quality, RACE to start, pulled from whatever was already in the seed plan). Picking "+ Add new style…" prompts for a name and saves it permanently (account-wide, in the `settings` doc) for every future run, not just the one being edited.
+
+## Notes vs. description
+
+- Removed the separate "description" field entirely — it was redundant with (and more limited than) a free-text notes field. Existing `desc` text is auto-migrated into `notes` the first time a user's data loads after this change (a one-time, idempotent migration that only touches rows with old-style `desc` and no `notes` yet — safe to run on every load).
+
+## Reference tab
+
+- Goal pace, the pace-zone table, the heart-rate-zone table, and the HR note are all editable in place from the Reference tab, backed by the `settings` doc (not hardcoded). Rows can be added or deleted. Goal pace editing lives here and drives the header subtitle everywhere else in the app.
+
+## Visual
+
+- Text darkened and enlarged for readability (contrast pushed further toward black in light mode; brightened slightly in dark mode — contrast is never reduced in dark mode to compensate).
+- On narrow layouts (the sidebar, mobile), the run-row grid switches to a stacked layout rather than the normal 4-column grid, which would overlap at that width.
+- The upcoming/completed scroll panels (fixed-height, internal scroll) are desktop-only; on mobile the whole page scrolls naturally instead, avoiding a scroll-within-a-scroll.
