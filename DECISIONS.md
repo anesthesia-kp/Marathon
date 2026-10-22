@@ -6,6 +6,7 @@ Durable decisions about how this app is built, in roughly chronological order. A
 
 - **Single static `index.html`, no build step.** Deployed straight to GitHub Pages. Firebase JS SDK v13.0.0 loaded as ES modules from the gstatic CDN.
 - **New, dedicated Firebase project** (`marathon-training-3fb9e`) rather than reusing one from another project. Google Sign-In only (no email/password). Firestore holds all data under `users/{uid}/...`, with security rules restricting each user to their own subtree.
+- **Security rules published (2026-10-21).** No rules had ever been published before this date (the database was relying on its creation defaults). The user published the per-user rules; verified live that reads without sign-in are refused (403) and the signed-in app still works. The console copy and the comment in `index.html` must stay identical.
 - **Multi-cycle support**: training blocks (cycles) can be archived and restored, not just one single plan forever.
 
 ## Schedule layout

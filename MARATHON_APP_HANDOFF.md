@@ -73,12 +73,12 @@ users/{uid}/settings/{auto-id}      (exactly one doc per account)
 ```
 First sign-in on an empty account seeds: one cycle "Fall 2026 Marathon" (race 2026-12-06) from `SEED_PLAN` (weeks 1–28, 77 runs, 672 planned miles), three shoes ("Shoe 1–3"), and the settings doc.
 
-**Security rules** (copy kept in the HTML comment at the top of `index.html`): read/write under `users/{uid}/**` only if `request.auth.uid == uid`.
+**Security rules** (published in the Firebase console 2026-10-21; copy kept in the HTML comment at the top of `index.html` — keep the two identical): read/write under `users/{uid}/**` only if `request.auth.uid == uid`; everything else denied.
 
 ## Known issues
 
 1. **Low contrast that was already there before the test suite** (accessibility standard is 4.5:1): white on the blue accent is 4.4:1 (Sign in button, "This week" badge, "Done editing" button); the blue "Sign out" link is 4.2:1; in dark mode the selected tab is a filled blue pill with white text at 3.6:1. The tab one looks unintended: the generic `button.active` rule (blue fill) overrides the `.tab-btn` underline style. Not changed (visual change — the user's call); listed in `KNOWN_A11Y` in `tests/app.spec.mjs` so any *new* problem still fails.
-2. **Firestore security rules are untested.** The emulator download (storage.googleapis.com) is blocked from both the cloud workspace and the computer's shell. It has also not been verified that the rules published in the Firebase console match the copy in the comment at the top of `index.html`.
+2. **Security rules: published and checked live, but not emulator-tested.** The user published the rules (same text as the comment at the top of `index.html`) on 2026-10-21 — before that, none had ever been published. Checked live the same night: reads with no sign-in were refused at `/users`, `/users/some-user/cycles` and `/anything-else` (HTTP 403 PERMISSION_DENIED, 0 documents), and the signed-in live site loaded normally. Not checked: a second signed-in account being refused (needs another Google account) and unauthenticated writes (deliberately not attempted against real data; the same rule line governs reads and writes). The Firestore emulator, which would allow full rule tests, can't be downloaded here (storage.googleapis.com is blocked from both the cloud workspace and the computer's shell).
 
 ## Tests
 
