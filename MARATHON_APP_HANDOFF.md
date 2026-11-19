@@ -11,7 +11,7 @@ index.html fingerprint: `00a03a3fc0180b117a380ccb03c187bd516ddab0`
 A personal marathon-training tracker. Started as a Google Sheet, now a single-file web app on GitHub Pages backed by Firebase.
 
 - **Live site:** https://anesthesia-kp.github.io/Marathon/
-- **Repo:** `anesthesia-kp/Marathon` (public, by the user's choice) — the only repo for this project. Local clone: `/Users/aaronfrankel/Documents/GitHub/Marathon` on the user's Mac.
+- **Repo:** `anesthesia-kp/Marathon` (public, by the user's choice) — the only repo for this project. Local clone: `/Users/aaronfrankel/GitHub/Marathon` on the user's Mac.
 - **Firebase project:** `marathon-training-3fb9e` (dedicated to this app — not shared with the user's Vacation Auction project). Firestore + Google Sign-In, live.
 - **Original plan source:** Google Sheet `1JQWTKwDMEHYLp5vLN6Z49JV4HGeSJYUb`. The app was seeded from it on 2026-10-19; the two are **not** kept in sync — the app is now where the plan is edited.
 - **Owner/user:** not a coder — simple explanations, high-quality code, honest pushback rather than agreement. Doesn't want to approve every small decision.

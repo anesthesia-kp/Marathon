@@ -2,3 +2,6 @@
 tests/node_modules/
 tests/test-results/
 tests/playwright-report/
+# [§528] the release's commit line and Finder's files are never committed
+COMMIT-MESSAGE.txt
+.DS_Store
